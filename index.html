@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Mosaic Crochet Projects</title>
+  <link rel="stylesheet" href="library.css">
+</head>
+<body>
+  <main class="library-shell">
+    <header class="library-header">
+      <div>
+        <p class="eyebrow">Mosaic Crochet Viewer</p>
+        <h1>Your Projects</h1>
+        <p>Select a project to continue exactly where you stopped, or import a new chart JSON.</p>
+      </div>
+      <button id="newProject" class="primary" type="button">New Project</button>
+    </header>
+
+
+    <section class="backup-panel" aria-labelledby="backupTitle">
+      <div class="backup-panel-copy">
+        <p class="eyebrow">Safety Backup</p>
+        <h2 id="backupTitle">Automatic cloud-folder backup</h2>
+        <p id="backupStatusText">Checking backup support...</p>
+        <p id="backupFileText" class="backup-file-text"></p>
+      </div>
+
+      <div class="backup-actions">
+        <button id="autoBackupAction" class="primary" type="button">Enable Auto-Backup</button>
+        <button id="backupNow" type="button" disabled>Back Up Now</button>
+        <button id="downloadBackup" type="button">Download Backup</button>
+
+        <label class="file-button">
+          Restore Backup
+          <input id="restoreBackup" type="file" accept="application/json,.json">
+        </label>
+
+        <button id="disconnectBackup" class="danger hidden" type="button">Disconnect</button>
+      </div>
+
+      <p class="backup-help">
+        When prompted, choose a file inside your iCloud Drive or Google Drive folder.
+        The viewer will update that file automatically after project changes.
+      </p>
+    </section>
+
+    <section id="projectList" class="project-list" aria-live="polite">
+      <p class="empty-state">Loading projects...</p>
+    </section>
+
+    <footer class="library-footer">
+      <p>Each project keeps its own chart, name, segment size, current row and segment, zoom, and completed stitches.</p>
+      <p id="storageInfo"></p>
+    </footer>
+  </main>
+
+  <div id="newProjectDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="newProjectTitle">
+    <section class="dialog-card">
+      <header class="dialog-header">
+        <div>
+          <h2 id="newProjectTitle">New Project</h2>
+          <p>Choose a compatible crochet chart JSON, then name the project.</p>
+        </div>
+        <button id="closeNewProject" class="icon-button" type="button" aria-label="Close">×</button>
+      </header>
+
+      <label for="projectFile">Chart JSON file</label>
+      <input id="projectFile" type="file" accept="application/json,.json">
+
+      <label for="projectName">Project name</label>
+      <input id="projectName" type="text" maxlength="100" placeholder="Example: Halloween blanket">
+
+      <div id="filePreview" class="file-preview">Select a JSON file to check it.</div>
+
+      <div class="dialog-actions">
+        <button id="cancelNewProject" type="button">Cancel</button>
+        <button id="createProject" class="primary" type="button" disabled>Create Project</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="renameDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+    <section class="dialog-card small">
+      <header class="dialog-header">
+        <div>
+          <h2 id="renameTitle">Rename Project</h2>
+          <p>Change the name shown in your project list.</p>
+        </div>
+      </header>
+
+      <label for="renameName">Project name</label>
+      <input id="renameName" type="text" maxlength="100">
+
+      <div class="dialog-actions">
+        <button id="cancelRename" type="button">Cancel</button>
+        <button id="saveRename" class="primary" type="button">Save Name</button>
+      </div>
+    </section>
+  </div>
+
+  <script id="embeddedStarterChart" type="application/json">{
+  "schemaVersion": 2,
+  "chartId": "original-geometric-bloom-demo-v1",
+  "title": "Original Geometric Bloom Demo",
+  "source": {
+    "type": "original demo",
+    "description": "Original geometric sampler created for this public repository.",
+    "license": "MIT"
+  },
+  "dimensions": {
+    "rows": 48,
+    "stitchesPerRow": 48,
+    "foundationRow": 0
+  },
+  "orientation": {
+    "jsonRowOrder": "row 1 through row 48",
+    "jsonStitchOrder": "stitch 1 through stitch 48",
+    "chartDisplayTopRow": 48,
+    "chartDisplayBottomRow": 0,
+    "chartDisplayLeftStitch": 48,
+    "chartDisplayRightStitch": 1
+  },
+  "palette": {
+    "0": {
+      "id": 0,
+      "name": "Midnight",
+      "hex": "#17324D",
+      "rgb": [
+        23,
+        50,
+        77
+      ]
+    },
+    "1": {
+      "id": 1,
+      "name": "Golden Thread",
+      "hex": "#E8B84A",
+      "rgb": [
+        232,
+        184,
+        74
+      ]
+    }
+  },
+  "stitchCodes": {
+    "s": "single crochet (blank cell)",
+    "d": "double crochet (X)",
+    "b": "border stitch (BS)",
+    "c": "chain"
+  },
+  "foundation": {
+    "row": 0,
+    "workingColor": "A",
+    "colors": "000000000000000000000000000000000000000000000000",
+    "stitches": "cccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "binaryRows": [
+    "000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000",
+    "000000000000000000000001100000000000000000000000",
+    "000000001000000000000000000000000000000100000000",
+    "000000011100000000000000000000000000001110000000",
+    "000000110110000000000001100000000000011011000000",
+    "000001100011000000000011110000000000110001100000",
+    "000000110110000000000111111000000000011011000000",
+    "000000011100000000001110011100000000001110000000",
+    "000000001000000000011100001110000000000100000000",
+    "000000000000000000111000000111000000000000000000",
+    "000000000000000001110000000011100000000000000000",
+    "000000000000000011100001100001110000000000000000",
+    "000000000000000111000011110000111000000000000000",
+    "000000000000001110000111111000011100000000000000",
+    "000000000000011100001110011100001110000000000000",
+    "000000000000111000111101101111000111000000000000",
+    "000000000001110000111001100111000011100000000000",
+    "000000000011100001111101101111100001110000000000",
+    "000000000111000011101111111101110000111000000000",
+    "000000001110000111000111111000111000011100000000",
+    "000010011100001110111111111111011100001110010000",
+    "000010011100001110111111111111011100001110010000",
+    "000000001110000111000111111000111000011100000000",
+    "000000000111000011101111111101110000111000000000",
+    "000000000011100001111101101111100001110000000000",
+    "000000000001110000111001100111000011100000000000",
+    "000000000000111000111101101111000111000000000000",
+    "000000000000011100001110011100001110000000000000",
+    "000000000000001110000111111000011100000000000000",
+    "000000000000000111000011110000111000000000000000",
+    "000000000000000011100001100001110000000000000000",
+    "000000000000000001110000000011100000000000000000",
+    "000000000000000000111000000111000000000000000000",
+    "000000001000000000011100001110000000000100000000",
+    "000000011100000000001110011100000000001110000000",
+    "000000110110000000000111111000000000011011000000",
+    "000001100011000000000011110000000000110001100000",
+    "000000110110000000000001100000000000011011000000",
+    "000000011100000000000000000000000000001110000000",
+    "000000001000000000000000000000000000000100000000",
+    "000000000000000000000001100000000000000000000000",
+    "000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000"
+  ],
+  "rows": [
+    {
+      "number": 1,
+      "workingColor": "A",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    },
+    {
+      "number": 2,
+      "workingColor": "B",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    },
+    {
+      "number": 3,
+      "workingColor": "A",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    },
+    {
+      "number": 4,
+      "workingColor": "B",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    },
+    {
+      "number": 5,
+      "workingColor": "A",
+      "colors": "000000000000000000000001100000000000000000000000",
+      "stitches": "bssssssssssssssssssssssddssssssssssssssssssssssb"
+    },
+    {
+      "number": 6,
+      "workingColor": "B",
+      "colors": "000000001000000000000000000000000000000100000000",
+      "stitches": "bsssssssdssssssssssssssssssssssssssssssdsssssssb"
+    },
+    {
+      "number": 7,
+      "workingColor": "A",
+      "colors": "000000011100000000000000000000000000001110000000",
+      "stitches": "bssssssdddssssssssssssssssssssssssssssdddssssssb"
+    },
+    {
+      "number": 8,
+      "workingColor": "B",
+      "colors": "000000110110000000000001100000000000011011000000",
+      "stitches": "bsssssddsddssssssssssssddssssssssssssddsddsssssb"
+    },
+    {
+      "number": 9,
+      "workingColor": "A",
+      "colors": "000001100011000000000011110000000000110001100000",
+      "stitches": "bssssddsssddssssssssssddddssssssssssddsssddssssb"
+    },
+    {
+      "number": 10,
+      "workingColor": "B",
+      "colors": "000000110110000000000111111000000000011011000000",
+      "stitches": "bsssssddsddssssssssssddddddssssssssssddsddsssssb"
+    },
+    {
+      "number": 11,
+      "workingColor": "A",
+      "colors": "000000011100000000001110011100000000001110000000",
+      "stitches": "bssssssdddssssssssssdddssdddssssssssssdddssssssb"
+    },
+    {
+      "number": 12,
+      "workingColor": "B",
+      "colors": "000000001000000000011100001110000000000100000000",
+      "stitches": "bsssssssdssssssssssdddssssdddssssssssssdsssssssb"
+    },
+    {
+      "number": 13,
+      "workingColor": "A",
+      "colors": "000000000000000000111000000111000000000000000000",
+      "stitches": "bsssssssssssssssssdddssssssdddsssssssssssssssssb"
+    },
+    {
+      "number": 14,
+      "workingColor": "B",
+      "colors": "000000000000000001110000000011100000000000000000",
+      "stitches": "bssssssssssssssssdddssssssssdddssssssssssssssssb"
+    },
+    {
+      "number": 15,
+      "workingColor": "A",
+      "colors": "000000000000000011100001100001110000000000000000",
+      "stitches": "bsssssssssssssssdddssssddssssdddsssssssssssssssb"
+    },
+    {
+      "number": 16,
+      "workingColor": "B",
+      "colors": "000000000000000111000011110000111000000000000000",
+      "stitches": "bssssssssssssssdddssssddddssssdddssssssssssssssb"
+    },
+    {
+      "number": 17,
+      "workingColor": "A",
+      "colors": "000000000000001110000111111000011100000000000000",
+      "stitches": "bsssssssssssssdddssssddddddssssdddsssssssssssssb"
+    },
+    {
+      "number": 18,
+      "workingColor": "B",
+      "colors": "000000000000011100001110011100001110000000000000",
+      "stitches": "bssssssssssssdddssssdddssdddssssdddssssssssssssb"
+    },
+    {
+      "number": 19,
+      "workingColor": "A",
+      "colors": "000000000000111000111101101111000111000000000000",
+      "stitches": "bsssssssssssdddsssddddsddsddddsssdddsssssssssssb"
+    },
+    {
+      "number": 20,
+      "workingColor": "B",
+      "colors": "000000000001110000111001100111000011100000000000",
+      "stitches": "bssssssssssdddssssdddssddssdddssssdddssssssssssb"
+    },
+    {
+      "number": 21,
+      "workingColor": "A",
+      "colors": "000000000011100001111101101111100001110000000000",
+      "stitches": "bsssssssssdddssssdddddsddsdddddssssdddsssssssssb"
+    },
+    {
+      "number": 22,
+      "workingColor": "B",
+      "colors": "000000000111000011101111111101110000111000000000",
+      "stitches": "bssssssssdddssssdddsddddddddsdddssssdddssssssssb"
+    },
+    {
+      "number": 23,
+      "workingColor": "A",
+      "colors": "000000001110000111000111111000111000011100000000",
+      "stitches": "bsssssssdddssssdddsssddddddsssdddssssdddsssssssb"
+    },
+    {
+      "number": 24,
+      "workingColor": "B",
+      "colors": "000010011100001110111111111111011100001110010000",
+      "stitches": "bsssdssdddssssdddsddddddddddddsdddssssdddssdsssb"
+    },
+    {
+      "number": 25,
+      "workingColor": "A",
+      "colors": "000010011100001110111111111111011100001110010000",
+      "stitches": "bsssdssdddssssdddsddddddddddddsdddssssdddssdsssb"
+    },
+    {
+      "number": 26,
+      "workingColor": "B",
+      "colors": "000000001110000111000111111000111000011100000000",
+      "stitches": "bsssssssdddssssdddsssddddddsssdddssssdddsssssssb"
+    },
+    {
+      "number": 27,
+      "workingColor": "A",
+      "colors": "000000000111000011101111111101110000111000000000",
+      "stitches": "bssssssssdddssssdddsddddddddsdddssssdddssssssssb"
+    },
+    {
+      "number": 28,
+      "workingColor": "B",
+      "colors": "000000000011100001111101101111100001110000000000",
+      "stitches": "bsssssssssdddssssdddddsddsdddddssssdddsssssssssb"
+    },
+    {
+      "number": 29,
+      "workingColor": "A",
+      "colors": "000000000001110000111001100111000011100000000000",
+      "stitches": "bssssssssssdddssssdddssddssdddssssdddssssssssssb"
+    },
+    {
+      "number": 30,
+      "workingColor": "B",
+      "colors": "000000000000111000111101101111000111000000000000",
+      "stitches": "bsssssssssssdddsssddddsddsddddsssdddsssssssssssb"
+    },
+    {
+      "number": 31,
+      "workingColor": "A",
+      "colors": "000000000000011100001110011100001110000000000000",
+      "stitches": "bssssssssssssdddssssdddssdddssssdddssssssssssssb"
+    },
+    {
+      "number": 32,
+      "workingColor": "B",
+      "colors": "000000000000001110000111111000011100000000000000",
+      "stitches": "bsssssssssssssdddssssddddddssssdddsssssssssssssb"
+    },
+    {
+      "number": 33,
+      "workingColor": "A",
+      "colors": "000000000000000111000011110000111000000000000000",
+      "stitches": "bssssssssssssssdddssssddddssssdddssssssssssssssb"
+    },
+    {
+      "number": 34,
+      "workingColor": "B",
+      "colors": "000000000000000011100001100001110000000000000000",
+      "stitches": "bsssssssssssssssdddssssddssssdddsssssssssssssssb"
+    },
+    {
+      "number": 35,
+      "workingColor": "A",
+      "colors": "000000000000000001110000000011100000000000000000",
+      "stitches": "bssssssssssssssssdddssssssssdddssssssssssssssssb"
+    },
+    {
+      "number": 36,
+      "workingColor": "B",
+      "colors": "000000000000000000111000000111000000000000000000",
+      "stitches": "bsssssssssssssssssdddssssssdddsssssssssssssssssb"
+    },
+    {
+      "number": 37,
+      "workingColor": "A",
+      "colors": "000000001000000000011100001110000000000100000000",
+      "stitches": "bsssssssdssssssssssdddssssdddssssssssssdsssssssb"
+    },
+    {
+      "number": 38,
+      "workingColor": "B",
+      "colors": "000000011100000000001110011100000000001110000000",
+      "stitches": "bssssssdddssssssssssdddssdddssssssssssdddssssssb"
+    },
+    {
+      "number": 39,
+      "workingColor": "A",
+      "colors": "000000110110000000000111111000000000011011000000",
+      "stitches": "bsssssddsddssssssssssddddddssssssssssddsddsssssb"
+    },
+    {
+      "number": 40,
+      "workingColor": "B",
+      "colors": "000001100011000000000011110000000000110001100000",
+      "stitches": "bssssddsssddssssssssssddddssssssssssddsssddssssb"
+    },
+    {
+      "number": 41,
+      "workingColor": "A",
+      "colors": "000000110110000000000001100000000000011011000000",
+      "stitches": "bsssssddsddssssssssssssddssssssssssssddsddsssssb"
+    },
+    {
+      "number": 42,
+      "workingColor": "B",
+      "colors": "000000011100000000000000000000000000001110000000",
+      "stitches": "bssssssdddssssssssssssssssssssssssssssdddssssssb"
+    },
+    {
+      "number": 43,
+      "workingColor": "A",
+      "colors": "000000001000000000000000000000000000000100000000",
+      "stitches": "bsssssssdssssssssssssssssssssssssssssssdsssssssb"
+    },
+    {
+      "number": 44,
+      "workingColor": "B",
+      "colors": "000000000000000000000001100000000000000000000000",
+      "stitches": "bssssssssssssssssssssssddssssssssssssssssssssssb"
+    },
+    {
+      "number": 45,
+      "workingColor": "A",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    },
+    {
+      "number": 46,
+      "workingColor": "B",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    },
+    {
+      "number": 47,
+      "workingColor": "A",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    },
+    {
+      "number": 48,
+      "workingColor": "B",
+      "colors": "000000000000000000000000000000000000000000000000",
+      "stitches": "bssssssssssssssssssssssssssssssssssssssssssssssb"
+    }
+  ]
+}</script>
+  <script src="project-store.js"></script>
+  <script src="library.js"></script>
+</body>
+</html>
