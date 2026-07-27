@@ -6,6 +6,7 @@
 
   let pendingChart = null;
   let pendingFileName = "";
+  let pendingFileType = "";
   let renameProjectId = null;
   let currentBackupStatus = null;
 
@@ -16,6 +17,7 @@
     projectFile: $("projectFile"),
     projectName: $("projectName"),
     filePreview: $("filePreview"),
+    downloadConvertedJson: $("downloadConvertedJson"),
     createProject: $("createProject"),
     renameDialog: $("renameDialog"),
     renameName: $("renameName"),
@@ -38,6 +40,63 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  function fileKind(file) {
+    const name = String(file?.name || "").toLowerCase();
+    if (file?.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
+    if (file?.type === "application/json" || name.endsWith(".json")) return "json";
+    return "unknown";
+  }
+
+  function chartStitchCounts(chart) {
+    const counts = { s: 0, d: 0, b: 0, c: 0 };
+
+    for (const row of chart.rows || []) {
+      for (const code of String(row.stitches || "")) {
+        if (Object.prototype.hasOwnProperty.call(counts, code)) counts[code] += 1;
+      }
+    }
+
+    for (const code of String(chart.foundation?.stitches || "")) {
+      if (Object.prototype.hasOwnProperty.call(counts, code)) counts[code] += 1;
+    }
+
+    return counts;
+  }
+
+  function sourceLabel(project) {
+    const type = String(project.chart?.source?.type || "").toLowerCase();
+    if (type.includes("pdf")) return "Stitch Fiddle PDF";
+    if (type.includes("json")) return "JSON";
+    if (type.includes("demo")) return "Original demo";
+    return project.sourceFileName?.toLowerCase().endsWith(".pdf")
+      ? "Stitch Fiddle PDF"
+      : "Chart JSON";
+  }
+
+  function nextPaint() {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  function downloadPendingJson() {
+    if (!pendingChart) return;
+
+    const blob = new Blob(
+      [JSON.stringify(pendingChart, null, 2)],
+      { type: "application/json" }
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const safeName = String(ui.projectName.value || pendingChart.title || "stitch-fiddle-chart")
+      .trim()
+      .replace(/[^a-z0-9-_]+/gi, "-")
+      .replace(/^-+|-+$/g, "") || "stitch-fiddle-chart";
+
+    anchor.href = url;
+    anchor.download = `${safeName}.json`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   function projectStats(project) {
@@ -180,7 +239,7 @@
       ui.projectList.innerHTML = `
         <div class="empty-state">
           <strong>No projects yet</strong>
-          <p>Click New Project to import a crochet-chart JSON.</p>
+          <p>Click New Project to import a Stitch Fiddle PDF or compatible JSON.</p>
         </div>
       `;
       return;
@@ -196,6 +255,7 @@
           <h2>${escapeHtml(project.name)}</h2>
           <div class="project-meta">
             <span>${stats.rows} rows × ${stats.stitches} stitches</span>
+            <span>${escapeHtml(sourceLabel(project))}</span>
             <span>${stats.segments} segments per row at ${stats.segmentSize} ${stats.segmentSize === 1 ? "stitch" : "stitches"} each</span>
             <span>Updated ${escapeHtml(formatDate(project.updatedAt))}</span>
           </div>
@@ -249,10 +309,13 @@
   function openNewProject() {
     pendingChart = null;
     pendingFileName = "";
+    pendingFileType = "";
     ui.projectFile.value = "";
     ui.projectName.value = "";
+    ui.projectFile.disabled = false;
     ui.filePreview.className = "file-preview";
-    ui.filePreview.textContent = "Select a JSON file to check it.";
+    ui.filePreview.textContent = "Select a Stitch Fiddle PDF or compatible JSON file to check it.";
+    ui.downloadConvertedJson.classList.add("hidden");
     ui.createProject.disabled = true;
     ui.newProjectDialog.classList.remove("hidden");
   }
@@ -264,35 +327,82 @@
   async function inspectFile(file) {
     pendingChart = null;
     pendingFileName = file.name;
+    pendingFileType = fileKind(file);
     ui.createProject.disabled = true;
+    ui.downloadConvertedJson.classList.add("hidden");
+
+    if (pendingFileType === "unknown") {
+      ui.filePreview.className = "file-preview invalid";
+      ui.filePreview.textContent = "Choose a .pdf Stitch Fiddle export or a compatible .json chart file.";
+      return;
+    }
 
     try {
-      const parsed = JSON.parse(await file.text());
+      let parsed;
+
+      if (pendingFileType === "pdf") {
+        if (!globalThis.StitchFiddlePDF?.parse) {
+          throw new Error("The Stitch Fiddle PDF importer did not load.");
+        }
+
+        ui.filePreview.className = "file-preview processing";
+        ui.filePreview.innerHTML = `
+          <span class="processing-spinner" aria-hidden="true"></span>
+          <strong>Reading Stitch Fiddle PDF…</strong><br>
+          <span id="pdfImportMessage">The file stays on this device.</span>
+        `;
+        ui.projectFile.disabled = true;
+        await nextPaint();
+
+        parsed = await StitchFiddlePDF.parse(file, {
+          fileName: file.name,
+          onProgress(progress) {
+            const message = $("pdfImportMessage");
+            if (message) message.textContent = progress.message;
+          }
+        });
+      } else {
+        parsed = JSON.parse(await file.text());
+      }
+
       pendingChart = ProjectStore.validateChart(parsed);
       const rows = pendingChart.dimensions.rows;
       const stitches = pendingChart.dimensions.stitchesPerRow;
+      const counts = chartStitchCounts(pendingChart);
+      const source = pendingFileType === "pdf"
+        ? "Stitch Fiddle PDF converted successfully"
+        : "Compatible JSON chart";
 
       if (!ui.projectName.value.trim()) {
-        ui.projectName.value =
-          pendingChart.title ||
-          file.name.replace(/\.json$/i, "");
+        ui.projectName.value = pendingChart.title || file.name.replace(/\.(?:pdf|json)$/i, "");
       }
+
+      const privacyLine = pendingFileType === "pdf"
+        ? '<br><span class="privacy-note">Converted locally. The PDF is not uploaded or added to GitHub.</span>'
+        : "";
 
       ui.filePreview.className = "file-preview valid";
       ui.filePreview.innerHTML = `
-        <strong>Compatible chart</strong><br>
+        <strong>${escapeHtml(source)}</strong><br>
         ${escapeHtml(pendingChart.title)}<br>
-        ${rows} rows × ${stitches} stitches · starts at
-        ${Math.min(DEFAULT_SEGMENT_SIZE, stitches)}
-        ${Math.min(DEFAULT_SEGMENT_SIZE, stitches) === 1 ? "stitch" : "stitches"}
-        per segment
+        ${rows.toLocaleString()} rows × ${stitches.toLocaleString()} stitches
+        · ${(rows * stitches).toLocaleString()} chart cells<br>
+        ${counts.d.toLocaleString()} double crochet
+        · ${counts.s.toLocaleString()} single crochet
+        · ${counts.b.toLocaleString()} border stitches<br>
+        Starts at ${Math.min(DEFAULT_SEGMENT_SIZE, stitches)}
+        ${Math.min(DEFAULT_SEGMENT_SIZE, stitches) === 1 ? "stitch" : "stitches"} per segment
+        ${privacyLine}
       `;
 
+      ui.downloadConvertedJson.classList.toggle("hidden", pendingFileType !== "pdf");
       ui.createProject.disabled = !ui.projectName.value.trim();
     } catch (error) {
+      console.error(error);
       ui.filePreview.className = "file-preview invalid";
-      ui.filePreview.textContent =
-        `This file cannot be imported: ${error.message}`;
+      ui.filePreview.textContent = `This file cannot be imported: ${error.message}`;
+    } finally {
+      ui.projectFile.disabled = false;
     }
   }
 
@@ -300,7 +410,7 @@
     const name = ui.projectName.value.trim();
 
     if (!pendingChart) {
-      alert("Choose a compatible chart JSON file.");
+      alert("Choose a compatible Stitch Fiddle PDF or chart JSON file.");
       return;
     }
 
@@ -402,6 +512,8 @@
       const file = event.target.files?.[0];
       if (file) await inspectFile(file);
     });
+
+    ui.downloadConvertedJson.addEventListener("click", downloadPendingJson);
 
     ui.projectName.addEventListener("input", () => {
       ui.createProject.disabled =

@@ -1,1 +1,8 @@
-Open index.html. See README.md for GitHub Pages instructions.
+MOSAIC CROCHET PROJECT VIEWER — GITHUB PUBLIC RELEASE
+
+1. Upload every file and folder in this package to the root of your GitHub repository.
+2. Make sure index.html, stitch-fiddle-pdf.js, and the vendor folder are included.
+3. Enable GitHub Pages from the main branch and / (root).
+4. Open the published site and select New Project.
+5. Import either a default two-color Stitch Fiddle mosaic PDF or a compatible JSON file.
+6. Read README.md for public documentation, privacy details, backups, iPhone use, and troubleshooting.

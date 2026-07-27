@@ -172,7 +172,7 @@
   }
 
   function progressStorageKey() {
-    return `crochet-chart-progress:${chart.chartId || "chart7"}`;
+    return `crochet-chart-progress:${chart.chartId || "mosaic-chart"}`;
   }
 
   function displayRowCount() {

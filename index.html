@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Mosaic Crochet Projects</title>
-  <link rel="stylesheet" href="library.css">
+  <link rel="stylesheet" href="library.css?v=3">
 </head>
 <body>
   <main class="library-shell">
@@ -13,7 +13,7 @@
       <div>
         <p class="eyebrow">Mosaic Crochet Viewer</p>
         <h1>Your Projects</h1>
-        <p>Select a project to continue exactly where you stopped, or import a new chart JSON.</p>
+        <p>Select a project to continue exactly where you stopped, or import a Stitch Fiddle PDF or compatible JSON.</p>
       </div>
       <button id="newProject" class="primary" type="button">New Project</button>
     </header>
@@ -61,18 +61,31 @@
       <header class="dialog-header">
         <div>
           <h2 id="newProjectTitle">New Project</h2>
-          <p>Choose a compatible crochet chart JSON, then name the project.</p>
+          <p>Choose a default two-color Stitch Fiddle mosaic PDF or a compatible chart JSON, then name the project.</p>
         </div>
         <button id="closeNewProject" class="icon-button" type="button" aria-label="Close">×</button>
       </header>
 
-      <label for="projectFile">Chart JSON file</label>
-      <input id="projectFile" type="file" accept="application/json,.json">
+      <div class="import-format-grid" aria-label="Supported chart formats">
+        <div class="import-format">
+          <strong>Stitch Fiddle PDF</strong>
+          <span>Use the free default PDF export. It is converted privately on this device.</span>
+        </div>
+        <div class="import-format">
+          <strong>Compatible JSON</strong>
+          <span>Use charts already converted for this viewer.</span>
+        </div>
+      </div>
+
+      <label for="projectFile">PDF or JSON chart file</label>
+      <input id="projectFile" type="file" accept="application/pdf,application/json,.pdf,.json">
 
       <label for="projectName">Project name</label>
       <input id="projectName" type="text" maxlength="100" placeholder="Example: Halloween blanket">
 
-      <div id="filePreview" class="file-preview">Select a JSON file to check it.</div>
+      <div id="filePreview" class="file-preview" aria-live="polite">Select a PDF or JSON file to check it.</div>
+
+      <button id="downloadConvertedJson" class="hidden" type="button">Download Converted JSON</button>
 
       <div class="dialog-actions">
         <button id="cancelNewProject" type="button">Cancel</button>
@@ -497,7 +510,9 @@
     }
   ]
 }</script>
-  <script src="project-store.js"></script>
-  <script src="library.js"></script>
+  <script src="vendor/pako_inflate.min.js?v=3"></script>
+  <script src="stitch-fiddle-pdf.js?v=3"></script>
+  <script src="project-store.js?v=3"></script>
+  <script src="library.js?v=3"></script>
 </body>
 </html>

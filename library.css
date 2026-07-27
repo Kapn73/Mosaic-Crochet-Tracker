@@ -216,3 +216,74 @@ input[type="text"], input[type="file"] { width: 100%; min-height: 44px; border: 
     color: #86efac;
   }
 }
+
+.import-format-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 16px;
+}
+
+.import-format {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel-soft);
+}
+
+.import-format strong,
+.import-format span {
+  display: block;
+}
+
+.import-format span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.file-preview.processing {
+  position: relative;
+  padding-left: 46px;
+  color: var(--text);
+}
+
+.processing-spinner {
+  position: absolute;
+  left: 15px;
+  top: 18px;
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: import-spin 0.85s linear infinite;
+}
+
+.privacy-note {
+  display: inline-block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+#downloadConvertedJson {
+  margin-top: 10px;
+}
+
+@keyframes import-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 520px) {
+  .import-format-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processing-spinner {
+    animation: none;
+  }
+}
