@@ -1,187 +1,278 @@
 # Mosaic Crochet Project Viewer
 
-A private, browser-based project library and progress tracker for overlay mosaic crochet.
+A privacy-focused browser app for importing mosaic crochet charts, breaking
+large rows into manageable sections, and tracking progress one stitch at a
+time.
 
-Import a standard two-color Stitch Fiddle PDF directly, or import a compatible chart JSON. The app converts supported PDFs on the device, displays the chart in manageable stitch segments, and remembers progress separately for every project.
+The viewer accepts:
 
-> **Privacy first:** imported PDFs, converted charts, project names, and progress are not uploaded to this repository or shared with other visitors. They remain in the visitor's browser unless the visitor intentionally creates a backup file.
+- Default two-color Stitch Fiddle overlay mosaic crochet PDF exports
+- Compatible Mosaic Crochet Project Viewer JSON files
 
-## What it does
+Supported PDFs are converted directly in the browser. No account, server
+upload, paid conversion service, or separate JSON conversion step is required.
 
-- Imports default two-color Stitch Fiddle mosaic crochet PDFs
-- Imports compatible chart JSON files
-- Converts supported PDFs locally without OCR or a server
-- Corrects left/right orientation for the viewer
-- Supports multiple named projects
-- Tracks completed stitches, rows, segments, and current position
-- Allows any segment size from 1 stitch through the full row
-- Shows blank cells as single crochet and X cells as double crochet
-- Provides Retina-sharp canvas rendering and adjustable zoom
-- Saves each project's display preferences and progress
-- Exports and restores complete library backups
-- Can write automatic backups to a selected file when the browser supports it
-- Includes an original 48 × 48 Geometric Bloom demo chart
+## Start using the viewer
 
-## Quick start
-
-### Use the hosted version
-
-After the repository has been published with GitHub Pages, open the Pages address in a browser.
+Open the hosted viewer in a modern browser.
 
 1. Select **New Project**.
-2. Choose a supported `.pdf` or compatible `.json` file.
-3. Review the detected chart dimensions.
+2. Choose a supported PDF or JSON file.
+3. Review the detected chart size and stitch totals.
 4. Enter a project name.
 5. Select **Create Project**.
 6. Open the project and begin tracking progress.
 
-### Run locally
+A built-in **Geometric Bloom Demo** is included so the viewer can be explored
+without importing a personal pattern.
 
-Keep every file and folder together, then open `index.html` in a browser.
+## Main features
 
-For the most consistent local-file and automatic-backup behavior, Chrome or another Chromium-based desktop browser is recommended. Manual **Download Backup** and **Restore Backup** remain available when automatic file writing is unavailable.
+- Direct import of supported Stitch Fiddle PDF exports
+- Import of compatible JSON chart files
+- Multiple named crochet projects
+- Automatic progress saving for each project
+- Adjustable working sections from 1 stitch through the full row
+- Current row, segment, and stitch-range tracking
+- Blank cells displayed as single crochet
+- X-marked cells displayed as double crochet
+- Border-stitch and foundation-chain support
+- Automatic correction of PDF left/right orientation
+- Retina-sharp chart rendering
+- Adjustable zoom and focus settings
+- Complete library backup and restore
+- Optional automatic backup to a selected desktop file
+- iPhone and desktop browser support
+- Light and dark mode support
 
-## Supported PDF format
+## Supported Stitch Fiddle PDFs
 
-The PDF importer is designed for the normal free PDF export produced by a default **two-color Stitch Fiddle overlay mosaic crochet chart**.
+The PDF importer is designed for the normal free PDF export produced by a
+default **two-color Stitch Fiddle overlay mosaic crochet chart**.
 
-A supported PDF normally contains:
+A compatible PDF normally includes:
 
 - A Stitch Fiddle legend page
-- A vector chart page
+- A vector-based chart page
 - Color A and Color B row markers
 - Blank single-crochet cells
 - X-marked double-crochet cells
 - Border-stitch cells
 - A complete foundation-chain row
 
-The importer reads the PDF's vector rectangles and embedded stitch-font symbols directly. It does not use OCR and does not estimate the chart from a screenshot.
+The importer reads the PDF's vector grid and embedded stitch symbols directly.
+It does not use OCR and does not estimate cells from a screenshot.
 
-### PDF conversion rules
+### PDF stitch conversion
 
-| PDF cell or symbol | Viewer stitch code | Viewer display |
+| PDF cell or symbol | Internal code | Viewer display |
 |---|---:|---|
 | Blank chart cell | `s` | Blank single-crochet cell |
 | Double-crochet symbol | `d` | X |
 | Border-stitch symbol | `b` | BS |
 | Foundation-chain symbol | `c` | Chain symbol |
 
-The PDF's visible row is reversed while being stored because the viewer places stitch 1 on the right. This prevents imported patterns from appearing horizontally mirrored.
+The importer also reverses each stored row when necessary because the viewer
+places stitch 1 on the right. This prevents supported PDF patterns from
+appearing horizontally mirrored.
 
-### Currently unsupported
+### PDFs that are not currently supported
 
-The importer rejects rather than guesses when it encounters:
+The importer stops and reports an error rather than guessing when it finds:
 
-- Scanned PDFs
+- Scanned chart pages
 - Screenshots saved as PDFs
-- PDFs exported by unrelated chart programs
-- More than two working colors
+- Print-to-PDF copies that removed the original vector information
+- PDFs from unrelated chart programs
+- Charts with more than two working colors
 - Missing or incomplete chart grids
 - Unknown stitch symbols
 - Missing foundation chains
 - Unsupported PDF stream compression
 - Charts above the current 200,000-cell safety limit
 
-More technical details are available in [PDF_IMPORT.md](PDF_IMPORT.md).
+Technical details and validation rules are documented in
+[PDF_IMPORT.md](PDF_IMPORT.md).
 
-## Compatible JSON import
+## JSON import
 
-The JSON importer remains available for original designs, manually converted charts, and other supported workflows.
+Compatible JSON files can also be imported. JSON is useful for:
 
-See [JSON_FORMAT.md](JSON_FORMAT.md) for the required schema and stitch codes.
+- Original chart designs
+- Previously converted patterns
+- Charts created specifically for this viewer
+- Sharing chart data when redistribution is permitted
 
-## Optional converted JSON download
+The required structure is documented in [JSON_FORMAT.md](JSON_FORMAT.md).
 
-After a PDF is successfully read, the import window offers **Download Converted JSON**. This is optional. The project can be created and used without downloading the converted JSON separately.
+After a PDF is successfully read, **Download Converted JSON** is available as
+an optional convenience. Downloading the converted JSON is not required to use
+the project.
 
-## Project storage and privacy
+## Privacy
 
-The app is a static site. It contains no account system, server database, analytics, or upload endpoint.
+The viewer is a static website with no account system, analytics service,
+remote database, or pattern-upload endpoint.
 
-The public GitHub repository contains only:
+Imported PDFs, converted charts, project names, and progress stay in the
+visitor's own browser unless the visitor intentionally downloads or selects a
+backup file.
 
-- The app's HTML, CSS, and JavaScript
-- The bundled PDF decompression library
-- Documentation
-- The original demo chart
-
-Each visitor's imported charts and progress are stored separately in that visitor's browser using IndexedDB, with localStorage as a fallback.
-
-Other visitors cannot see:
+Other visitors to the same public website cannot see:
 
 - Imported pattern PDFs
-- Converted charts
+- Converted chart data
 - Project names
 - Completed stitches
 - Current rows or segments
 - Backup files
 
-Do not commit personal pattern files or library backups to the public repository.
+The public repository contains only the application files, documentation,
+third-party dependency notices, and the original demo chart.
 
-## Backups
+## Progress storage
 
-Browser storage is convenient, but it can be lost when browser data is cleared or an app/browser is removed.
+Projects and progress are stored in the browser using IndexedDB, with
+localStorage available as a fallback.
 
-### Manual backup
-
-Use **Download Backup** to create one JSON file containing the complete project library, including:
+Saved data includes:
 
 - Imported chart data
 - Project names
 - Completed stitches
 - Current row and segment
-- Segment sizes
-- Zoom and display settings
+- Segment size
+- Zoom level
+- Grid, symbol, focus, and foundation-row settings
 
-Use **Restore Backup** to replace the current browser library with a saved backup.
+Browser storage belongs to a specific browser, device, browser profile, and
+website address. Clearing browser data or removing the browser may erase the
+working copy.
+
+## Backups
+
+### Download Backup
+
+**Download Backup** creates one JSON file containing the complete project
+library and all saved progress.
+
+Store the file somewhere safe, such as:
+
+- iCloud Drive
+- Google Drive
+- OneDrive
+- Dropbox
+- An external drive
+- A normal local folder
+
+### Restore Backup
+
+**Restore Backup** replaces the current browser library with the projects and
+progress contained in a saved backup.
+
+Restoring does not merge two independent libraries. The selected backup
+becomes the current library.
 
 ### Automatic backup
 
-On supported desktop browsers, select **Enable Auto-Backup** and choose a normal JSON file. That file can be located in an iCloud Drive or Google Drive folder that is available through the operating system's file picker.
+Supported desktop Chromium browsers can use **Enable Auto-Backup** to select a
+normal JSON file that the viewer updates after project changes.
 
-When automatic file access is unavailable, continue using **Download Backup** and **Restore Backup**.
+The selected file may be located in a cloud-synced folder such as iCloud Drive
+or Google Drive.
 
-## Using it on iPhone
+Automatic selected-file writing is not available in every browser. Manual
+**Download Backup** and **Restore Backup** remain available as the universal
+fallback.
 
-1. Publish the repository with GitHub Pages.
-2. Open the Pages address in Safari on the iPhone.
-3. Use **New Project** to select a PDF or JSON from the Files app.
-4. In Safari, use **Share → Add to Home Screen** for app-like access.
+## Using the viewer on iPhone
 
-The iPhone and desktop browsers keep separate working libraries. To move progress between devices:
+1. Open the hosted viewer in Safari.
+2. Select **New Project**.
+3. Choose a supported PDF or JSON file from the Files app.
+4. Import the chart and begin tracking progress.
+5. Use **Share → Add to Home Screen** for app-like access.
 
-1. Download a fresh library backup on the device most recently used.
-2. Save it in iCloud Drive or another shared location.
-3. Restore it on the other device before continuing.
+The Home Screen version still stores its projects locally on the iPhone.
 
-Do not work independently on both devices and then restore an older backup, because restoring replaces the current library rather than merging two versions.
+Automatic selected-file backup may be unavailable in iPhone Safari. Use
+**Download Backup** and save the backup in iCloud Drive or another accessible
+location.
 
-## Publish with GitHub Pages
+## Using the same projects on multiple devices
 
-This project is already structured as a static GitHub Pages site. No build command is required.
+Browser libraries do not automatically synchronize between an iPhone and a
+computer.
 
-1. Create or open a GitHub repository.
-2. Upload **all files and folders** from this package to the repository root.
-3. Confirm that `index.html`, `stitch-fiddle-pdf.js`, and the `vendor` folder are present at the root.
-4. Commit the files to `main`.
-5. Open **Settings → Pages**.
-6. Under **Build and deployment**, choose **Deploy from a branch**.
-7. Select the `main` branch and `/ (root)` folder.
-8. Save the Pages configuration.
+To continue on another device:
 
-The included `.nojekyll` file tells GitHub Pages to serve this as a plain static site.
+1. Download a fresh backup on the device used most recently.
+2. Save it in a shared location such as iCloud Drive.
+3. Open the viewer on the second device.
+4. Restore that backup before continuing.
 
-## Updating an existing installation
+Avoid making separate progress on both devices without transferring the latest
+backup. Restoring an older file can overwrite newer progress.
 
-1. Open the current site and create a full-library backup.
-2. Replace the repository files with the contents of the new release.
-3. Keep the same repository and Pages address.
-4. Commit the update.
-5. Reload the site after GitHub Pages finishes publishing.
+## Troubleshooting
 
-The storage database name is intentionally preserved, so projects already saved at the same site address should remain available. A backup is still strongly recommended before updating.
+### A PDF is rejected
 
-## Repository structure
+Confirm that it is the original default two-color Stitch Fiddle overlay mosaic
+crochet PDF export. Scans, screenshots, and print-to-PDF copies may no longer
+contain the vector cells and embedded stitch symbols needed by the importer.
+
+### A pattern looks mirrored
+
+Current PDF imports correct the orientation automatically. Delete the
+incorrectly imported project and import the original PDF again using the
+current version of the viewer.
+
+### Projects disappeared after the site address changed
+
+Browser storage is tied to the exact website address. Restore a complete
+library backup at the new address.
+
+### Automatic backup is unavailable
+
+Use **Download Backup** and save the file in a safe location. Automatic backup
+depends on browser support and file permission.
+
+### The website still shows an older version
+
+Reload the page after the latest deployment finishes. A hard refresh may be
+needed if the browser cached older JavaScript files.
+
+## For repository owners and self-hosters
+
+This project is a static site and requires no build command or server-side
+code.
+
+### GitHub Pages deployment
+
+1. Upload all files and folders to the repository root.
+2. Confirm that `index.html`, `stitch-fiddle-pdf.js`, and `vendor/` are present.
+3. Commit the files to the `main` branch.
+4. Open **Settings → Pages**.
+5. Choose **Deploy from a branch**.
+6. Select `main` and `/ (root)`.
+7. Save the Pages configuration.
+
+The included `.nojekyll` file allows GitHub Pages to serve the project as a
+plain static site.
+
+### Updating an existing deployment
+
+1. Create a full-library backup before updating.
+2. Replace the repository files with the new release.
+3. Keep the same repository and GitHub Pages address when possible.
+4. Commit the updated files.
+5. Reload the site after deployment completes.
+
+Keeping the same site address allows existing browser storage to remain
+associated with the viewer. A backup is still strongly recommended.
+
+## Repository contents
 
 | File or folder | Purpose |
 |---|---|
@@ -193,43 +284,36 @@ The storage database name is intentionally preserved, so projects already saved 
 | `viewer.js` | Chart rendering and progress tracking |
 | `library.css` | Project-library styling |
 | `viewer.css` | Chart-viewer styling |
-| `vendor/` | Bundled PDF stream decompression dependency |
+| `vendor/` | Bundled PDF decompression dependency |
 | `demo-geometric-bloom.json` | Original public demo chart |
-| `PDF_IMPORT.md` | PDF importer details and validation rules |
-| `JSON_FORMAT.md` | Compatible JSON schema documentation |
+| `PDF_IMPORT.md` | PDF importer details |
+| `JSON_FORMAT.md` | Compatible JSON schema |
 | `THIRD_PARTY_NOTICES.md` | Third-party license notices |
+| `RELEASE_NOTES.md` | Release history |
 | `LICENSE` | Project license |
 
-## Troubleshooting
+## Copyright and pattern responsibility
 
-### The PDF is rejected
+The viewer is intended to help users privately view and track charts they are
+authorized to use.
 
-Confirm that it is the normal two-color Stitch Fiddle mosaic crochet PDF export rather than a scan, screenshot, or print-to-PDF copy.
+Users remain responsible for following the copyright, licensing, and sharing
+terms attached to imported patterns. Importing a pattern into private browser
+storage does not grant permission to publish, sell, or redistribute the PDF,
+the chart, or converted chart data.
 
-### The pattern looks mirrored
+## Independence disclaimer
 
-Current imports reverse each row for the viewer automatically. Delete the incorrectly imported project and import the original PDF again using the current release.
+This is an independent compatibility tool. It is not affiliated with,
+endorsed by, sponsored by, or maintained by Stitch Fiddle.
 
-### Projects disappeared after changing the website address
-
-Browser storage is tied to the exact site address. Restore a full-library backup at the new address.
-
-### Automatic backup is unavailable
-
-Use **Download Backup** and save the file somewhere safe. Automatic selected-file writing depends on browser support and file permission.
-
-### GitHub Pages shows an old version
-
-Confirm the latest files were committed to the configured Pages branch and folder, then reload after publication completes. A hard refresh may be necessary when cached JavaScript files are still in use.
-
-## Disclaimer
-
-This project is an independent tool and is not affiliated with, endorsed by, or sponsored by Stitch Fiddle. “Stitch Fiddle” is referenced only to describe compatibility with its default PDF export format.
-
-Users are responsible for respecting the copyright and license terms of any patterns they import. Importing a pattern into private browser storage does not grant permission to redistribute that pattern or its converted data.
+“Stitch Fiddle” is referenced only to identify the PDF export format supported
+by the importer.
 
 ## License
 
-The application code and original Geometric Bloom demo chart are licensed under the [MIT License](LICENSE).
+The application code and original Geometric Bloom demo chart are licensed
+under the [MIT License](LICENSE).
 
-The bundled pako decompression library is also MIT-licensed. Its notice is included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The bundled pako decompression library is also MIT-licensed. Its notice is
+included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
