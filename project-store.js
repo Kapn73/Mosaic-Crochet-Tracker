@@ -2,22 +2,37 @@
   "use strict";
 
   const DB_NAME = "MosaicCrochetProjectViewerPublic";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const PROJECT_STORE = "projects";
+  const PROGRESS_STORE = "progress";
   const SETTINGS_STORE = "settings";
 
   const FALLBACK_PROJECTS = "mosaic-crochet-public-projects:v1";
   const FALLBACK_SETTINGS = "mosaic-crochet-public-settings:v1";
 
   const DEFAULT_SEGMENT_SIZE = 10;
+  const MAX_CHART_CELLS = 200000;
+  const MAX_JSON_FILE_BYTES = 25 * 1024 * 1024;
+  const MAX_BACKUP_FILE_BYTES = 100 * 1024 * 1024;
+  const MAX_PROJECT_NAME_LENGTH = 100;
+  const MAX_TITLE_LENGTH = 160;
+  const MAX_PALETTE_NAME_LENGTH = 80;
+  const MAX_SOURCE_FILE_NAME_LENGTH = 255;
+  const VALID_STITCH_CODES = new Set(["s", "d", "b", "c"]);
+  const HEX_COLOR = /^#[0-9A-F]{6}$/i;
+  const SAFE_PALETTE_KEY = /^[0-9A-Za-z]$/;
+
   const BACKUP_TYPE = "mosaic-crochet-project-library";
-  const BACKUP_SCHEMA_VERSION = 1;
+  const BACKUP_SCHEMA_VERSION = 2;
+  const APP_DATA_VERSION = 3;
   const AUTO_BACKUP_DELAY = 1200;
 
   const AUTO_BACKUP_ENABLED_KEY = "autoBackupEnabled";
   const AUTO_BACKUP_HANDLE_KEY = "autoBackupFileHandle";
   const AUTO_BACKUP_FILE_NAME_KEY = "autoBackupFileName";
   const AUTO_BACKUP_LAST_SAVED_KEY = "autoBackupLastSavedAt";
+  const PRE_RESTORE_RECOVERY_KEY = "preRestoreRecovery";
+  const RECOVERY_PREFIX = "mosaic-crochet-progress-recovery:";
 
   let db = null;
   let mode = "indexeddb";
@@ -48,6 +63,536 @@
   function makeId() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     return `project-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function cleanText(value, maximum, fallback = "") {
+    const cleaned = String(value ?? fallback)
+      .replace(/[\u0000-\u001F\u007F]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return (cleaned || fallback).slice(0, maximum);
+  }
+
+  function normalizeProjectName(value, fallback = "Untitled project") {
+    return cleanText(value, MAX_PROJECT_NAME_LENGTH, fallback);
+  }
+
+  function slugify(value) {
+    return cleanText(value, 120, "mosaic-chart")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || "mosaic-chart";
+  }
+
+  function rgbFromHex(hex) {
+    return [
+      Number.parseInt(hex.slice(1, 3), 16),
+      Number.parseInt(hex.slice(3, 5), 16),
+      Number.parseInt(hex.slice(5, 7), 16)
+    ];
+  }
+
+  function normalizeSource(source) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) return {};
+
+    const normalized = {};
+    for (const [key, value] of Object.entries(source).slice(0, 30)) {
+      const safeKey = cleanText(key, 60);
+      if (!safeKey) continue;
+
+      if (typeof value === "string") {
+        normalized[safeKey] = cleanText(value, 1000);
+      } else if (typeof value === "number" && Number.isFinite(value)) {
+        normalized[safeKey] = value;
+      } else if (typeof value === "boolean") {
+        normalized[safeKey] = value;
+      }
+    }
+
+    return normalized;
+  }
+
+  function validateChart(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("The file does not contain a chart object.");
+    }
+
+    const rows = Number(data.dimensions?.rows);
+    const stitches = Number(data.dimensions?.stitchesPerRow);
+
+    if (!Number.isInteger(rows) || rows < 1) {
+      throw new Error("The chart needs a valid dimensions.rows value.");
+    }
+
+    if (!Number.isInteger(stitches) || stitches < 1) {
+      throw new Error("The chart needs a valid dimensions.stitchesPerRow value.");
+    }
+
+    const totalCells = rows * stitches;
+    if (!Number.isSafeInteger(totalCells) || totalCells > MAX_CHART_CELLS) {
+      throw new Error(
+        `The chart contains ${Number.isFinite(totalCells) ? totalCells.toLocaleString() : "too many"} cells. ` +
+        `The current safety limit is ${MAX_CHART_CELLS.toLocaleString()} cells.`
+      );
+    }
+
+    if (
+      !data.palette ||
+      typeof data.palette !== "object" ||
+      Array.isArray(data.palette)
+    ) {
+      throw new Error("The chart needs a palette object.");
+    }
+
+    const paletteEntries = Object.entries(data.palette);
+    if (paletteEntries.length < 1 || paletteEntries.length > 36) {
+      throw new Error("The palette must contain between 1 and 36 colors.");
+    }
+
+    const paletteKeysInput = new Set(paletteEntries.map(([key]) => key));
+    if (!paletteKeysInput.has("0") || !paletteKeysInput.has("1")) {
+      throw new Error('The viewer requires palette keys "0" (Color A) and "1" (Color B).');
+    }
+
+    const palette = {};
+    for (const [key, entry] of paletteEntries) {
+      if (!SAFE_PALETTE_KEY.test(key)) {
+        throw new Error(
+          `Palette key ${JSON.stringify(key)} is invalid. Palette keys must be one letter or number.`
+        );
+      }
+
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error(`Palette entry ${key} is invalid.`);
+      }
+
+      const hex = String(entry.hex || "").toUpperCase();
+      if (!HEX_COLOR.test(hex)) {
+        throw new Error(`Palette entry ${key} needs a valid six-digit hex color.`);
+      }
+
+      palette[key] = {
+        id:
+          Number.isFinite(Number(entry.id))
+            ? Number(entry.id)
+            : key,
+        name: cleanText(
+          entry.name,
+          MAX_PALETTE_NAME_LENGTH,
+          `Color ${key}`
+        ),
+        hex,
+        rgb: rgbFromHex(hex)
+      };
+    }
+
+    if (!Array.isArray(data.rows) || data.rows.length !== rows) {
+      throw new Error(`The chart must contain exactly ${rows} row records.`);
+    }
+
+    const paletteKeys = new Set(Object.keys(palette));
+    const foundRows = new Set();
+    const normalizedRows = [];
+
+    for (const sourceRow of data.rows) {
+      if (!sourceRow || typeof sourceRow !== "object") {
+        throw new Error("A chart row is invalid.");
+      }
+
+      const number = Number(sourceRow.number);
+      if (!Number.isInteger(number) || number < 1 || number > rows) {
+        throw new Error("A row has an invalid row number.");
+      }
+
+      if (foundRows.has(number)) {
+        throw new Error(`Row ${number} appears more than once.`);
+      }
+      foundRows.add(number);
+
+      const colors = String(sourceRow.colors ?? "");
+      const rowStitches = String(sourceRow.stitches ?? "");
+
+      if (colors.length !== stitches) {
+        throw new Error(
+          `Row ${number} has ${colors.length} color cells; ${stitches} are required.`
+        );
+      }
+
+      if (rowStitches.length !== stitches) {
+        throw new Error(
+          `Row ${number} has ${rowStitches.length} stitch cells; ${stitches} are required.`
+        );
+      }
+
+      for (const colorKey of colors) {
+        if (!paletteKeys.has(colorKey)) {
+          throw new Error(
+            `Row ${number} uses palette key ${JSON.stringify(colorKey)}, which is not defined.`
+          );
+        }
+      }
+
+      for (const code of rowStitches) {
+        if (!VALID_STITCH_CODES.has(code)) {
+          throw new Error(
+            `Row ${number} contains unsupported stitch code ${JSON.stringify(code)}.`
+          );
+        }
+      }
+
+      const workingColor = String(sourceRow.workingColor || "");
+      if (!["A", "B"].includes(workingColor)) {
+        throw new Error(`Row ${number} needs workingColor "A" or "B".`);
+      }
+
+      normalizedRows.push({
+        number,
+        workingColor,
+        colors,
+        stitches: rowStitches
+      });
+    }
+
+    normalizedRows.sort((left, right) => left.number - right.number);
+
+    for (let row = 1; row <= rows; row += 1) {
+      if (!foundRows.has(row)) throw new Error(`Row ${row} is missing.`);
+    }
+
+    const firstPaletteId = Object.keys(palette)[0];
+    let foundation;
+
+    if (data.foundation == null) {
+      foundation = {
+        row: 0,
+        workingColor: "A",
+        colors: firstPaletteId.repeat(stitches),
+        stitches: "c".repeat(stitches)
+      };
+    } else {
+      if (
+        typeof data.foundation !== "object" ||
+        Array.isArray(data.foundation)
+      ) {
+        throw new Error("The foundation row is invalid.");
+      }
+
+      const colors = String(data.foundation.colors ?? "");
+      const foundationStitches = String(data.foundation.stitches ?? "");
+      const workingColor = String(data.foundation.workingColor || "A");
+
+      if (colors.length !== stitches) {
+        throw new Error(
+          `The foundation row has ${colors.length} color cells; ${stitches} are required.`
+        );
+      }
+
+      if (foundationStitches.length !== stitches) {
+        throw new Error(
+          `The foundation row has ${foundationStitches.length} stitch cells; ${stitches} are required.`
+        );
+      }
+
+      for (const colorKey of colors) {
+        if (!paletteKeys.has(colorKey)) {
+          throw new Error(
+            `The foundation row uses undefined palette key ${JSON.stringify(colorKey)}.`
+          );
+        }
+      }
+
+      for (const code of foundationStitches) {
+        if (!VALID_STITCH_CODES.has(code)) {
+          throw new Error(
+            `The foundation row contains unsupported stitch code ${JSON.stringify(code)}.`
+          );
+        }
+      }
+
+      if (!["A", "B"].includes(workingColor)) {
+        throw new Error('The foundation row needs workingColor "A" or "B".');
+      }
+
+      foundation = {
+        row: 0,
+        workingColor,
+        colors,
+        stitches: foundationStitches
+      };
+    }
+
+    const title = cleanText(data.title, MAX_TITLE_LENGTH, "Untitled crochet chart");
+    const chartId = slugify(data.chartId || `${title}-${rows}x${stitches}`);
+
+    const normalized = {
+      schemaVersion: 2,
+      chartId,
+      title,
+      source: normalizeSource(data.source),
+      dimensions: {
+        rows,
+        stitchesPerRow: stitches,
+        foundationRow: 0
+      },
+      orientation: {
+        jsonRowOrder: `row 1 through row ${rows}`,
+        jsonStitchOrder: `stitch 1 through stitch ${stitches}`,
+        chartDisplayTopRow: rows,
+        chartDisplayBottomRow: 0,
+        chartDisplayLeftStitch: stitches,
+        chartDisplayRightStitch: 1
+      },
+      palette,
+      stitchCodes: {
+        s: "single crochet (blank cell)",
+        d: "double crochet (X)",
+        b: "border stitch (BS)",
+        c: "chain"
+      },
+      foundation,
+      binaryRows: normalizedRows.map((row) => row.colors),
+      rows: normalizedRows
+    };
+
+    if (data.design && typeof data.design === "object" && !Array.isArray(data.design)) {
+      normalized.design = normalizeSource(data.design);
+    }
+
+    return normalized;
+  }
+
+  function normalizeProgress(progress, chart) {
+    const rows = chart.dimensions.rows;
+    const stitches = chart.dimensions.stitchesPerRow;
+    const requestedSegmentSize =
+      Number(progress?.view?.segmentSize) ||
+      Number(progress?.segmentSize) ||
+      DEFAULT_SEGMENT_SIZE;
+
+    const segmentSize = Math.max(
+      1,
+      Math.min(stitches, Math.round(requestedSegmentSize))
+    );
+
+    const segmentCount = Math.ceil(stitches / segmentSize);
+    const completedSet = new Set();
+
+    if (Array.isArray(progress?.completed)) {
+      for (const value of progress.completed) {
+        const match = String(value).match(/^(\d+):(\d+)$/);
+        if (!match) continue;
+
+        const row = Number(match[1]);
+        const stitch = Number(match[2]);
+
+        if (
+          row >= 0 &&
+          row <= rows &&
+          stitch >= 1 &&
+          stitch <= stitches
+        ) {
+          completedSet.add(`${row}:${stitch}`);
+        }
+      }
+    }
+
+    const row = Math.max(
+      1,
+      Math.min(rows, Math.round(Number(progress?.current?.row) || 1))
+    );
+
+    const segment = Math.max(
+      1,
+      Math.min(
+        segmentCount,
+        Math.round(Number(progress?.current?.segment) || 1)
+      )
+    );
+
+    const segmentStart = (segment - 1) * segmentSize + 1;
+    const segmentEnd = Math.min(segmentStart + segmentSize - 1, stitches);
+    const stitch = Math.max(
+      segmentStart,
+      Math.min(
+        segmentEnd,
+        Math.round(Number(progress?.current?.stitch) || segmentStart)
+      )
+    );
+
+    return {
+      completed: [...completedSet],
+      current: { row, segment, stitch },
+      view: {
+        cellSize: Math.max(
+          4,
+          Math.min(120, Number(progress?.view?.cellSize) || 44)
+        ),
+        focusSegment:
+          typeof progress?.view?.focusSegment === "boolean"
+            ? progress.view.focusSegment
+            : true,
+        showGrid:
+          typeof progress?.view?.showGrid === "boolean"
+            ? progress.view.showGrid
+            : true,
+        showSymbols:
+          typeof progress?.view?.showSymbols === "boolean"
+            ? progress.view.showSymbols
+            : true,
+        showFoundation:
+          typeof progress?.view?.showFoundation === "boolean"
+            ? progress.view.showFoundation
+            : false,
+        autoCenter:
+          typeof progress?.view?.autoCenter === "boolean"
+            ? progress.view.autoCenter
+            : true,
+        crochetMode:
+          typeof progress?.view?.crochetMode === "boolean"
+            ? progress.view.crochetMode
+            : false,
+        segmentSize
+      }
+    };
+  }
+
+  function normalizeProject(project, index = 0) {
+    if (!project || typeof project !== "object") {
+      throw new Error(`Backup project ${index + 1} is invalid.`);
+    }
+
+    const chart = validateChart(project.chart);
+    const now = new Date().toISOString();
+    const name = normalizeProjectName(
+      project.name,
+      chart.title || `Project ${index + 1}`
+    );
+
+    return {
+      id: cleanText(project.id, 180, makeId()),
+      name,
+      chart,
+      progress: normalizeProgress(project.progress, chart),
+      sourceFileName: cleanText(
+        project.sourceFileName,
+        MAX_SOURCE_FILE_NAME_LENGTH
+      ),
+      archived: Boolean(project.archived),
+      notes: cleanText(project.notes, 2000),
+      createdAt: String(project.createdAt || now),
+      updatedAt: String(project.updatedAt || now)
+    };
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    const chunk = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk));
+    }
+    return btoa(binary);
+  }
+
+  function base64ToBytes(value) {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+
+  function encodeCompleted(completed, chart) {
+    const stitches = chart.dimensions.stitchesPerRow;
+    const total = (chart.dimensions.rows + 1) * stitches;
+    const bytes = new Uint8Array(Math.ceil(total / 8));
+
+    for (const key of completed) {
+      const match = String(key).match(/^(\d+):(\d+)$/);
+      if (!match) continue;
+
+      const row = Number(match[1]);
+      const stitch = Number(match[2]);
+      if (
+        row < 0 ||
+        row > chart.dimensions.rows ||
+        stitch < 1 ||
+        stitch > stitches
+      ) {
+        continue;
+      }
+
+      const bitIndex = row * stitches + stitch - 1;
+      bytes[bitIndex >> 3] |= 1 << (bitIndex & 7);
+    }
+
+    return bytesToBase64(bytes);
+  }
+
+  function decodeCompleted(encoded, chart) {
+    if (typeof encoded !== "string" || !encoded) return [];
+
+    const bytes = base64ToBytes(encoded);
+    const stitches = chart.dimensions.stitchesPerRow;
+    const rows = chart.dimensions.rows;
+    const completed = [];
+
+    for (let row = 0; row <= rows; row += 1) {
+      for (let stitch = 1; stitch <= stitches; stitch += 1) {
+        const bitIndex = row * stitches + stitch - 1;
+        if (bytes[bitIndex >> 3] & (1 << (bitIndex & 7))) {
+          completed.push(`${row}:${stitch}`);
+        }
+      }
+    }
+
+    return completed;
+  }
+
+  function compactProgressRecord(projectId, progress, chart, updatedAt = new Date().toISOString()) {
+    const normalized = normalizeProgress(progress, chart);
+
+    return {
+      projectId,
+      dataVersion: APP_DATA_VERSION,
+      completedBits: encodeCompleted(normalized.completed, chart),
+      completedCount: normalized.completed.length,
+      current: normalized.current,
+      view: normalized.view,
+      updatedAt
+    };
+  }
+
+  function progressFromRecord(record, chart, fallback) {
+    if (record?.completedBits) {
+      return normalizeProgress(
+        {
+          completed: decodeCompleted(record.completedBits, chart),
+          current: record.current,
+          view: record.view
+        },
+        chart
+      );
+    }
+
+    return normalizeProgress(fallback || {}, chart);
+  }
+
+  function projectForStorage(project) {
+    const stored = {
+      id: project.id,
+      name: project.name,
+      chart: project.chart,
+      sourceFileName: project.sourceFileName || "",
+      archived: Boolean(project.archived),
+      notes: project.notes || "",
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt
+    };
+
+    return stored;
   }
 
   function supportsFileAutoBackup() {
@@ -96,171 +641,7 @@
     backupListeners.add(listener);
     listener(statusSnapshot());
 
-    return () => {
-      backupListeners.delete(listener);
-    };
-  }
-
-  function validateChart(data) {
-    if (!data || typeof data !== "object") {
-      throw new Error("The JSON does not contain a chart object.");
-    }
-
-    const rows = Number(data.dimensions?.rows);
-    const stitches = Number(data.dimensions?.stitchesPerRow);
-
-    if (!Number.isInteger(rows) || rows < 1) {
-      throw new Error("The chart needs a valid dimensions.rows value.");
-    }
-
-    if (!Number.isInteger(stitches) || stitches < 1) {
-      throw new Error("The chart needs a valid dimensions.stitchesPerRow value.");
-    }
-
-    if (!data.palette || typeof data.palette !== "object") {
-      throw new Error("The chart needs a palette.");
-    }
-
-    if (!Array.isArray(data.rows) || data.rows.length !== rows) {
-      throw new Error(`The chart must contain exactly ${rows} row records.`);
-    }
-
-    const foundRows = new Set();
-
-    for (const row of data.rows) {
-      if (!Number.isInteger(row.number) || row.number < 1 || row.number > rows) {
-        throw new Error("A row has an invalid row number.");
-      }
-
-      if (foundRows.has(row.number)) {
-        throw new Error(`Row ${row.number} appears more than once.`);
-      }
-      foundRows.add(row.number);
-
-      if (typeof row.colors !== "string" || row.colors.length !== stitches) {
-        throw new Error(`Row ${row.number} has an invalid colors string.`);
-      }
-
-      if (typeof row.stitches !== "string" || row.stitches.length !== stitches) {
-        throw new Error(`Row ${row.number} has an invalid stitches string.`);
-      }
-    }
-
-    for (let row = 1; row <= rows; row += 1) {
-      if (!foundRows.has(row)) throw new Error(`Row ${row} is missing.`);
-    }
-
-    const normalized = clone(data);
-    normalized.chartId = String(data.chartId || makeId());
-    normalized.title = String(data.title || "Untitled crochet chart");
-    normalized.dimensions.rows = rows;
-    normalized.dimensions.stitchesPerRow = stitches;
-
-    if (
-      !normalized.foundation ||
-      typeof normalized.foundation.colors !== "string" ||
-      normalized.foundation.colors.length !== stitches ||
-      typeof normalized.foundation.stitches !== "string" ||
-      normalized.foundation.stitches.length !== stitches
-    ) {
-      const firstPaletteId = Object.keys(normalized.palette)[0] || "0";
-      normalized.foundation = {
-        number: 0,
-        workingColor: "A",
-        colors: firstPaletteId.repeat(stitches),
-        stitches: "c".repeat(stitches)
-      };
-    }
-
-    return normalized;
-  }
-
-  function normalizeProgress(progress, chart) {
-    const rows = chart.dimensions.rows;
-    const stitches = chart.dimensions.stitchesPerRow;
-    const requestedSegmentSize =
-      Number(progress?.view?.segmentSize) ||
-      Number(progress?.segmentSize) ||
-      DEFAULT_SEGMENT_SIZE;
-
-    const segmentSize = Math.max(
-      1,
-      Math.min(stitches, Math.round(requestedSegmentSize))
-    );
-
-    const segmentCount = Math.ceil(stitches / segmentSize);
-
-    const completed = Array.isArray(progress?.completed)
-      ? progress.completed.filter((key) => {
-          const match = String(key).match(/^(\d+):(\d+)$/);
-          if (!match) return false;
-
-          const row = Number(match[1]);
-          const stitch = Number(match[2]);
-
-          return row >= 0 && row <= rows && stitch >= 1 && stitch <= stitches;
-        })
-      : [];
-
-    const row = Math.max(
-      1,
-      Math.min(rows, Math.round(Number(progress?.current?.row) || 1))
-    );
-
-    const segment = Math.max(
-      1,
-      Math.min(
-        segmentCount,
-        Math.round(Number(progress?.current?.segment) || 1)
-      )
-    );
-
-    return {
-      completed,
-      current: { row, segment },
-      view: {
-        cellSize: Math.max(
-          4,
-          Math.min(120, Number(progress?.view?.cellSize) || 44)
-        ),
-        focusSegment:
-          typeof progress?.view?.focusSegment === "boolean"
-            ? progress.view.focusSegment
-            : true,
-        showGrid:
-          typeof progress?.view?.showGrid === "boolean"
-            ? progress.view.showGrid
-            : true,
-        showSymbols:
-          typeof progress?.view?.showSymbols === "boolean"
-            ? progress.view.showSymbols
-            : true,
-        showFoundation:
-          typeof progress?.view?.showFoundation === "boolean"
-            ? progress.view.showFoundation
-            : false,
-        segmentSize
-      }
-    };
-  }
-
-  function normalizeProject(project, index = 0) {
-    if (!project || typeof project !== "object") {
-      throw new Error(`Backup project ${index + 1} is invalid.`);
-    }
-
-    const chart = validateChart(project.chart);
-    const now = new Date().toISOString();
-
-    return {
-      id: String(project.id || makeId()),
-      name: String(project.name || chart.title || `Project ${index + 1}`).trim(),
-      chart,
-      progress: normalizeProgress(project.progress, chart),
-      sourceFileName: String(project.sourceFileName || ""),
-      createdAt: String(project.createdAt || now),
-      updatedAt: String(project.updatedAt || now)
-    };
+    return () => backupListeners.delete(listener);
   }
 
   function openDatabase() {
@@ -278,6 +659,10 @@
 
         if (!database.objectStoreNames.contains(PROJECT_STORE)) {
           database.createObjectStore(PROJECT_STORE, { keyPath: "id" });
+        }
+
+        if (!database.objectStoreNames.contains(PROGRESS_STORE)) {
+          database.createObjectStore(PROGRESS_STORE, { keyPath: "projectId" });
         }
 
         if (!database.objectStoreNames.contains(SETTINGS_STORE)) {
@@ -298,22 +683,21 @@
     });
   }
 
-  function transact(storeName, access, action) {
+  function transactionResult(storeNames, access, action) {
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, access);
-      const store = tx.objectStore(storeName);
-      let request;
+      const tx = db.transaction(storeNames, access);
+      let result;
 
       try {
-        request = action(store);
+        result = action(tx);
       } catch (error) {
         reject(error);
         return;
       }
 
-      tx.oncomplete = () => resolve(request?.result);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error || new Error("IndexedDB transaction failed."));
+      tx.onabort = () => reject(tx.error || new Error("IndexedDB transaction was aborted."));
     });
   }
 
@@ -343,12 +727,12 @@
 
   async function getSetting(key) {
     if (mode === "indexeddb" && db) {
-      const record = await transact(
+      const request = await transactionResult(
         SETTINGS_STORE,
         "readonly",
-        (store) => store.get(key)
+        (tx) => tx.objectStore(SETTINGS_STORE).get(key)
       );
-      return record?.value;
+      return request?.result?.value;
     }
 
     return readLocalSettings()[key];
@@ -356,15 +740,14 @@
 
   async function setSetting(key, value) {
     if (mode === "indexeddb" && db) {
-      await transact(
+      await transactionResult(
         SETTINGS_STORE,
         "readwrite",
-        (store) => store.put({ key, value })
+        (tx) => tx.objectStore(SETTINGS_STORE).put({ key, value })
       );
       return;
     }
 
-    // File handles cannot be serialized into localStorage.
     if (key === AUTO_BACKUP_HANDLE_KEY) return;
 
     const settings = readLocalSettings();
@@ -374,10 +757,10 @@
 
   async function deleteSetting(key) {
     if (mode === "indexeddb" && db) {
-      await transact(
+      await transactionResult(
         SETTINGS_STORE,
         "readwrite",
-        (store) => store.delete(key)
+        (tx) => tx.objectStore(SETTINGS_STORE).delete(key)
       );
       return;
     }
@@ -387,34 +770,129 @@
     writeLocalSettings(settings);
   }
 
-  async function list() {
-    let projects;
-
-    if (mode === "indexeddb" && db) {
-      projects = await transact(
-        PROJECT_STORE,
-        "readonly",
-        (store) => store.getAll()
-      );
-    } else {
-      projects = readLocalProjects();
-    }
-
-    return (projects || []).sort((a, b) =>
-      String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))
-    );
+  function recoveryStorageKey(projectId) {
+    return `${RECOVERY_PREFIX}${projectId}`;
   }
 
-  async function get(id) {
-    if (mode === "indexeddb" && db) {
-      return await transact(
-        PROJECT_STORE,
-        "readonly",
-        (store) => store.get(id)
+  function saveRecoveryProgress(projectId, progress, chart) {
+    try {
+      const record = compactProgressRecord(
+        projectId,
+        progress,
+        chart,
+        new Date().toISOString()
       );
+      localStorage.setItem(recoveryStorageKey(projectId), JSON.stringify(record));
+    } catch (error) {
+      console.warn("Could not write the emergency recovery journal.", error);
+    }
+  }
+
+  function clearRecoveryProgress(projectId) {
+    try {
+      localStorage.removeItem(recoveryStorageKey(projectId));
+    } catch {
+      // Ignore unavailable localStorage.
+    }
+  }
+
+  function readRecoveryProgress(projectId, chart) {
+    try {
+      const raw = localStorage.getItem(recoveryStorageKey(projectId));
+      if (!raw) return null;
+      const record = JSON.parse(raw);
+
+      return {
+        record,
+        progress: progressFromRecord(record, chart, {})
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function list() {
+    if (mode !== "indexeddb" || !db) {
+      return readLocalProjects()
+        .map((project, index) => normalizeProject(project, index))
+        .sort((a, b) =>
+          String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))
+        );
     }
 
-    return readLocalProjects().find((project) => project.id === id) || null;
+    const requests = await transactionResult(
+      [PROJECT_STORE, PROGRESS_STORE],
+      "readonly",
+      (tx) => ({
+        projects: tx.objectStore(PROJECT_STORE).getAll(),
+        progress: tx.objectStore(PROGRESS_STORE).getAll()
+      })
+    );
+
+    const progressById = new Map(
+      (requests.progress.result || []).map((record) => [record.projectId, record])
+    );
+
+    return (requests.projects.result || [])
+      .map((stored) => {
+        const progressRecord = progressById.get(stored.id);
+        const recovery = readRecoveryProgress(stored.id, stored.chart);
+        const storedUpdated = progressRecord?.updatedAt || stored.updatedAt || "";
+        const useRecovery =
+          recovery?.record?.updatedAt &&
+          String(recovery.record.updatedAt) > String(storedUpdated);
+
+        const progress = useRecovery
+          ? recovery.progress
+          : progressFromRecord(progressRecord, stored.chart, stored.progress);
+
+        return {
+          ...stored,
+          progress,
+          updatedAt: useRecovery
+            ? recovery.record.updatedAt
+            : progressRecord?.updatedAt || stored.updatedAt
+        };
+      })
+      .sort((a, b) =>
+        String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))
+      );
+  }
+
+  async function get(projectId) {
+    if (mode !== "indexeddb" || !db) {
+      const project = readLocalProjects().find((item) => item.id === projectId);
+      return project ? normalizeProject(project) : null;
+    }
+
+    const requests = await transactionResult(
+      [PROJECT_STORE, PROGRESS_STORE],
+      "readonly",
+      (tx) => ({
+        project: tx.objectStore(PROJECT_STORE).get(projectId),
+        progress: tx.objectStore(PROGRESS_STORE).get(projectId)
+      })
+    );
+
+    const stored = requests.project.result;
+    if (!stored) return null;
+
+    const progressRecord = requests.progress.result;
+    const recovery = readRecoveryProgress(projectId, stored.chart);
+    const storedUpdated = progressRecord?.updatedAt || stored.updatedAt || "";
+    const useRecovery =
+      recovery?.record?.updatedAt &&
+      String(recovery.record.updatedAt) > String(storedUpdated);
+
+    return {
+      ...stored,
+      progress: useRecovery
+        ? recovery.progress
+        : progressFromRecord(progressRecord, stored.chart, stored.progress),
+      updatedAt: useRecovery
+        ? recovery.record.updatedAt
+        : progressRecord?.updatedAt || stored.updatedAt
+    };
   }
 
   function scheduleAutoBackup() {
@@ -427,12 +905,7 @@
     }
 
     clearTimeout(autoBackupTimer);
-
-    emitBackupStatus({
-      pending: true,
-      saving: false,
-      error: ""
-    });
+    emitBackupStatus({ pending: true, saving: false, error: "" });
 
     autoBackupTimer = setTimeout(() => {
       writeAutoBackup({ requestPermission: false }).catch((error) => {
@@ -442,48 +915,66 @@
   }
 
   async function put(project) {
+    const normalized = normalizeProject(project);
+    normalized.updatedAt = String(project.updatedAt || new Date().toISOString());
+
     if (mode === "indexeddb" && db) {
-      await transact(
-        PROJECT_STORE,
+      const progressRecord = compactProgressRecord(
+        normalized.id,
+        normalized.progress,
+        normalized.chart,
+        normalized.updatedAt
+      );
+
+      await transactionResult(
+        [PROJECT_STORE, PROGRESS_STORE],
         "readwrite",
-        (store) => store.put(project)
+        (tx) => {
+          tx.objectStore(PROJECT_STORE).put(projectForStorage(normalized));
+          tx.objectStore(PROGRESS_STORE).put(progressRecord);
+        }
       );
     } else {
       const projects = readLocalProjects();
-      const index = projects.findIndex((item) => item.id === project.id);
+      const index = projects.findIndex((item) => item.id === normalized.id);
 
-      if (index >= 0) projects[index] = project;
-      else projects.push(project);
+      if (index >= 0) projects[index] = normalized;
+      else projects.push(normalized);
 
       writeLocalProjects(projects);
     }
 
+    clearRecoveryProgress(normalized.id);
     scheduleAutoBackup();
-    return project;
+    return normalized;
   }
 
-  async function remove(id) {
+  async function remove(projectId) {
     if (mode === "indexeddb" && db) {
-      await transact(
-        PROJECT_STORE,
+      await transactionResult(
+        [PROJECT_STORE, PROGRESS_STORE],
         "readwrite",
-        (store) => store.delete(id)
+        (tx) => {
+          tx.objectStore(PROJECT_STORE).delete(projectId);
+          tx.objectStore(PROGRESS_STORE).delete(projectId);
+        }
       );
     } else {
       writeLocalProjects(
-        readLocalProjects().filter((project) => project.id !== id)
+        readLocalProjects().filter((project) => project.id !== projectId)
       );
     }
 
+    clearRecoveryProgress(projectId);
     scheduleAutoBackup();
   }
 
   function defaultProgress(chart) {
-    const legacyKey = `crochet-chart-progress:${chart.chartId || "original-geometric-bloom-demo-v1"}`;
+    const legacyKey =
+      `crochet-chart-progress:${chart.chartId || "original-geometric-bloom-demo-v1"}`;
 
     try {
       const legacy = JSON.parse(localStorage.getItem(legacyKey) || "null");
-
       if (legacy && Array.isArray(legacy.completed)) {
         return normalizeProgress(legacy, chart);
       }
@@ -498,38 +989,122 @@
     const chart = validateChart(chartData);
     const now = new Date().toISOString();
 
-    const project = {
+    return await put({
       id: makeId(),
-      name: String(name || chart.title || "Untitled project").trim(),
+      name: normalizeProjectName(name, chart.title),
       chart,
       progress: defaultProgress(chart),
-      sourceFileName,
+      sourceFileName: cleanText(
+        sourceFileName,
+        MAX_SOURCE_FILE_NAME_LENGTH
+      ),
+      archived: false,
+      notes: "",
       createdAt: now,
       updatedAt: now
-    };
-
-    await put(project);
-    return project;
+    });
   }
 
-  async function rename(id, name) {
-    const project = await get(id);
+  async function rename(projectId, name) {
+    const project = await get(projectId);
     if (!project) throw new Error("Project not found.");
 
-    project.name = String(name).trim();
+    project.name = normalizeProjectName(name, project.chart.title);
     project.updatedAt = new Date().toISOString();
-
     return await put(project);
   }
 
-  async function updateProgress(id, progress) {
-    const project = await get(id);
+  async function setArchived(projectId, archived) {
+    const project = await get(projectId);
     if (!project) throw new Error("Project not found.");
 
-    project.progress = normalizeProgress(progress, project.chart);
+    project.archived = Boolean(archived);
     project.updatedAt = new Date().toISOString();
-
     return await put(project);
+  }
+
+  async function duplicate(projectId, includeProgress = true) {
+    const project = await get(projectId);
+    if (!project) throw new Error("Project not found.");
+
+    const now = new Date().toISOString();
+    return await put({
+      ...clone(project),
+      id: makeId(),
+      name: normalizeProjectName(`${project.name} Copy`),
+      progress: includeProgress
+        ? clone(project.progress)
+        : defaultProgress(project.chart),
+      archived: false,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+
+  async function updateChart(projectId, chartData) {
+    const project = await get(projectId);
+    if (!project) throw new Error("Project not found.");
+
+    project.chart = validateChart(chartData);
+    project.progress = normalizeProgress(project.progress, project.chart);
+    project.updatedAt = new Date().toISOString();
+    return await put(project);
+  }
+
+  async function updateProgress(projectId, progress, chartHint = null) {
+    let chart = chartHint;
+    let project = null;
+
+    if (!chart) {
+      project = await get(projectId);
+      if (!project) throw new Error("Project not found.");
+      chart = project.chart;
+    }
+
+    const normalizedChart = chartHint ? chart : validateChart(chart);
+    const normalized = normalizeProgress(progress, normalizedChart);
+    const updatedAt = new Date().toISOString();
+
+    if (mode === "indexeddb" && db) {
+      await transactionResult(
+        PROGRESS_STORE,
+        "readwrite",
+        (tx) =>
+          tx.objectStore(PROGRESS_STORE).put(
+            compactProgressRecord(
+              projectId,
+              normalized,
+              normalizedChart,
+              updatedAt
+            )
+          )
+      );
+    } else {
+      const projects = readLocalProjects();
+      const index = projects.findIndex((item) => item.id === projectId);
+      if (index < 0) throw new Error("Project not found.");
+
+      projects[index].progress = normalized;
+      projects[index].updatedAt = updatedAt;
+      writeLocalProjects(projects);
+      project = projects[index];
+    }
+
+    clearRecoveryProgress(projectId);
+    scheduleAutoBackup();
+
+    return project
+      ? {
+          ...project,
+          progress: normalized,
+          updatedAt
+        }
+      : {
+          id: projectId,
+          chart: normalizedChart,
+          progress: normalized,
+          updatedAt
+        };
   }
 
   async function replaceAllProjects(projects) {
@@ -538,20 +1113,28 @@
 
     try {
       if (mode === "indexeddb" && db) {
-        await new Promise((resolve, reject) => {
-          const tx = db.transaction(PROJECT_STORE, "readwrite");
-          const store = tx.objectStore(PROJECT_STORE);
+        await transactionResult(
+          [PROJECT_STORE, PROGRESS_STORE],
+          "readwrite",
+          (tx) => {
+            const projectStore = tx.objectStore(PROJECT_STORE);
+            const progressStore = tx.objectStore(PROGRESS_STORE);
+            projectStore.clear();
+            progressStore.clear();
 
-          store.clear();
-
-          for (const project of normalized) {
-            store.put(project);
+            for (const project of normalized) {
+              projectStore.put(projectForStorage(project));
+              progressStore.put(
+                compactProgressRecord(
+                  project.id,
+                  project.progress,
+                  project.chart,
+                  project.updatedAt
+                )
+              );
+            }
           }
-
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-          tx.onabort = () => reject(tx.error);
-        });
+        );
       } else {
         writeLocalProjects(normalized);
       }
@@ -563,6 +1146,43 @@
 
     scheduleAutoBackup();
     return normalized;
+  }
+
+  async function mergeProjects(projects) {
+    const existing = await list();
+    const ids = new Set(existing.map((project) => project.id));
+    const names = new Set(existing.map((project) => project.name.toLowerCase()));
+    const imported = [];
+
+    suppressAutoBackup += 1;
+    try {
+      for (const source of projects.map(normalizeProject)) {
+        const project = clone(source);
+
+        if (ids.has(project.id)) {
+          project.id = makeId();
+        }
+
+        let baseName = project.name;
+        let candidate = baseName;
+        let suffix = 2;
+        while (names.has(candidate.toLowerCase())) {
+          candidate = `${baseName} (Imported ${suffix})`;
+          suffix += 1;
+        }
+
+        project.name = normalizeProjectName(candidate);
+        project.updatedAt = new Date().toISOString();
+        ids.add(project.id);
+        names.add(project.name.toLowerCase());
+        imported.push(await put(project));
+      }
+    } finally {
+      suppressAutoBackup -= 1;
+    }
+
+    scheduleAutoBackup();
+    return imported;
   }
 
   async function seedStarter(starterChart) {
@@ -578,6 +1198,8 @@
       chart,
       progress: defaultProgress(chart),
       sourceFileName: "demo-geometric-bloom.json",
+      archived: false,
+      notes: "",
       createdAt: now,
       updatedAt: now
     });
@@ -600,9 +1222,7 @@
   }
 
   async function loadAutoBackupConfiguration() {
-    autoBackupEnabled = Boolean(
-      await getSetting(AUTO_BACKUP_ENABLED_KEY)
-    );
+    autoBackupEnabled = Boolean(await getSetting(AUTO_BACKUP_ENABLED_KEY));
 
     const lastSavedAt =
       await getSetting(AUTO_BACKUP_LAST_SAVED_KEY) || null;
@@ -622,18 +1242,13 @@
       }
     }
 
-    if (!autoBackupHandle) {
-      autoBackupEnabled = false;
-    }
+    if (!autoBackupHandle) autoBackupEnabled = false;
 
     const permission = await queryPermission(autoBackupHandle);
 
     emitBackupStatus({
       enabled: autoBackupEnabled,
-      fileName:
-        autoBackupHandle?.name ||
-        fileName ||
-        "",
+      fileName: autoBackupHandle?.name || fileName || "",
       permission,
       persistentHandle,
       lastSavedAt,
@@ -649,6 +1264,7 @@
     return {
       backupType: BACKUP_TYPE,
       schemaVersion: BACKUP_SCHEMA_VERSION,
+      appDataVersion: APP_DATA_VERSION,
       exportedAt: new Date().toISOString(),
       projectCount: projects.length,
       projects: clone(projects)
@@ -659,20 +1275,16 @@
     clearTimeout(autoBackupTimer);
 
     if (!autoBackupEnabled || !autoBackupHandle) {
-      emitBackupStatus({
+      return emitBackupStatus({
         pending: false,
         saving: false,
         error: "Auto-backup is not connected."
       });
-
-      return statusSnapshot();
     }
 
     let permission = "unknown";
 
     try {
-      // When permission may need prompting, call requestPermission immediately
-      // so it still has the user's button-click activation.
       if (
         requestPermission &&
         typeof autoBackupHandle.requestPermission === "function"
@@ -685,7 +1297,7 @@
       }
 
       if (permission !== "granted") {
-        emitBackupStatus({
+        return emitBackupStatus({
           permission,
           pending: false,
           saving: false,
@@ -694,8 +1306,6 @@
               ? "Permission is needed to update the backup file."
               : "Access to the backup file was not granted."
         });
-
-        return statusSnapshot();
       }
 
       emitBackupStatus({
@@ -707,18 +1317,13 @@
 
       const payload = await buildBackupPayload();
       const writable = await autoBackupHandle.createWritable();
-
       await writable.write(JSON.stringify(payload, null, 2));
       await writable.close();
 
       const lastSavedAt = new Date().toISOString();
+      await setSetting(AUTO_BACKUP_LAST_SAVED_KEY, lastSavedAt);
 
-      await setSetting(
-        AUTO_BACKUP_LAST_SAVED_KEY,
-        lastSavedAt
-      );
-
-      emitBackupStatus({
+      return emitBackupStatus({
         fileName: autoBackupHandle.name || backupState.fileName,
         permission: "granted",
         pending: false,
@@ -726,8 +1331,6 @@
         lastSavedAt,
         error: ""
       });
-
-      return statusSnapshot();
     } catch (error) {
       emitBackupStatus({
         permission,
@@ -735,7 +1338,6 @@
         saving: false,
         error: error?.message || "The backup file could not be updated."
       });
-
       throw error;
     }
   }
@@ -747,24 +1349,19 @@
       );
     }
 
-    // The picker is deliberately the first awaited action so it is directly
-    // connected to the user's click.
     const handle = await window.showSaveFilePicker({
       id: "mosaic-crochet-backup",
       suggestedName: "mosaic-crochet-library-backup.json",
       types: [
         {
           description: "Mosaic Crochet library backup",
-          accept: {
-            "application/json": [".json"]
-          }
+          accept: { "application/json": [".json"] }
         }
       ]
     });
 
     autoBackupHandle = handle;
     autoBackupEnabled = true;
-
     let persistentHandle = false;
 
     if (mode === "indexeddb") {
@@ -796,10 +1393,7 @@
   }
 
   async function reconnectAutoBackup() {
-    if (!autoBackupHandle) {
-      return await enableAutoBackup();
-    }
-
+    if (!autoBackupHandle) return await enableAutoBackup();
     return await writeAutoBackup({ requestPermission: true });
   }
 
@@ -807,17 +1401,12 @@
     if (!autoBackupEnabled || !autoBackupHandle) {
       return await enableAutoBackup();
     }
-
     return await writeAutoBackup({ requestPermission: true });
   }
 
   async function flushAutoBackup() {
     clearTimeout(autoBackupTimer);
-
-    if (!autoBackupEnabled || !autoBackupHandle) {
-      return statusSnapshot();
-    }
-
+    if (!autoBackupEnabled || !autoBackupHandle) return statusSnapshot();
     return await writeAutoBackup({ requestPermission: false });
   }
 
@@ -827,7 +1416,6 @@
 
   async function disableAutoBackup() {
     clearTimeout(autoBackupTimer);
-
     autoBackupEnabled = false;
     autoBackupHandle = null;
 
@@ -848,13 +1436,9 @@
 
   async function getAutoBackupStatus() {
     const permission = await queryPermission(autoBackupHandle);
-
     return emitBackupStatus({
       permission,
-      fileName:
-        autoBackupHandle?.name ||
-        backupState.fileName ||
-        ""
+      fileName: autoBackupHandle?.name || backupState.fileName || ""
     });
   }
 
@@ -871,7 +1455,6 @@
     anchor.href = url;
     anchor.download = `mosaic-crochet-library-backup-${date}.json`;
     anchor.click();
-
     setTimeout(() => URL.revokeObjectURL(url), 0);
     return payload;
   }
@@ -894,27 +1477,93 @@
       );
     }
 
-    return payload.projects.map(normalizeProject);
+    const projects = payload.projects.map(normalizeProject);
+
+    return {
+      payload,
+      projects,
+      summary: {
+        exportedAt: payload.exportedAt || null,
+        projectCount: projects.length,
+        projects: projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+          rows: project.chart.dimensions.rows,
+          stitchesPerRow: project.chart.dimensions.stitchesPerRow,
+          percent:
+            project.chart.dimensions.rows * project.chart.dimensions.stitchesPerRow
+              ? project.progress.completed.filter(
+                  (key) => !String(key).startsWith("0:")
+                ).length /
+                (project.chart.dimensions.rows *
+                  project.chart.dimensions.stitchesPerRow) *
+                100
+              : 0
+        }))
+      }
+    };
   }
 
-  async function restoreBackupFile(file) {
-    const projects = parseBackupText(await file.text());
-    await replaceAllProjects(projects);
+  async function inspectBackupFile(file) {
+    if (file?.size > MAX_BACKUP_FILE_BYTES) {
+      throw new Error(
+        `The backup is larger than ${Math.round(MAX_BACKUP_FILE_BYTES / 1024 / 1024)} MB.`
+      );
+    }
 
-    // If an external auto-backup file is already connected, update it with
-    // the restored library as well.
+    return parseBackupText(await file.text());
+  }
+
+  async function savePreRestoreRecovery() {
+    try {
+      await setSetting(PRE_RESTORE_RECOVERY_KEY, await buildBackupPayload());
+      return true;
+    } catch (error) {
+      console.warn("Could not save the pre-restore recovery copy.", error);
+      return false;
+    }
+  }
+
+  async function hasRestoreRecovery() {
+    return Boolean(await getSetting(PRE_RESTORE_RECOVERY_KEY));
+  }
+
+  async function restorePreviousLibrary() {
+    const payload = await getSetting(PRE_RESTORE_RECOVERY_KEY);
+    if (!payload?.projects) {
+      throw new Error("No previous library recovery copy is available.");
+    }
+
+    const current = await buildBackupPayload();
+    await replaceAllProjects(payload.projects);
+    await setSetting(PRE_RESTORE_RECOVERY_KEY, current);
+    await flushAutoBackup();
+    return await list();
+  }
+
+  async function restoreBackupFile(file, restoreMode = "replace") {
+    const inspection = await inspectBackupFile(file);
+    await savePreRestoreRecovery();
+
+    const projects =
+      restoreMode === "merge"
+        ? await mergeProjects(inspection.projects)
+        : await replaceAllProjects(inspection.projects);
+
     await flushAutoBackup();
 
-    return projects;
+    return {
+      mode: restoreMode,
+      projects,
+      summary: inspection.summary
+    };
   }
 
   async function init(starterChart) {
     await openDatabase();
     await loadAutoBackupConfiguration();
 
-    if (starterChart) {
-      await seedStarter(starterChart);
-    }
+    if (starterChart) await seedStarter(starterChart);
 
     return {
       mode,
@@ -930,13 +1579,22 @@
     remove,
     create,
     rename,
+    setArchived,
+    duplicate,
+    updateChart,
     updateProgress,
     replaceAllProjects,
+    mergeProjects,
     validateChart,
     defaultProgress,
+    normalizeProgress,
+    saveRecoveryProgress,
     buildBackupPayload,
     downloadBackup,
+    inspectBackupFile,
     restoreBackupFile,
+    hasRestoreRecovery,
+    restorePreviousLibrary,
     enableAutoBackup,
     reconnectAutoBackup,
     chooseNewAutoBackupFile,
@@ -945,6 +1603,10 @@
     disableAutoBackup,
     getAutoBackupStatus,
     onAutoBackupStatus,
+    limits: {
+      maxChartCells: MAX_CHART_CELLS,
+      maxJsonFileBytes: MAX_JSON_FILE_BYTES
+    },
     get mode() {
       return mode;
     }

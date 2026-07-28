@@ -1,8 +1,16 @@
-MOSAIC CROCHET PROJECT VIEWER — GITHUB PUBLIC RELEASE
+MOSAIC CROCHET PROJECT VIEWER — STABILITY & MOBILE RELEASE
 
-1. Upload every file and folder in this package to the root of your GitHub repository.
-2. Make sure index.html, stitch-fiddle-pdf.js, and the vendor folder are included.
-3. Enable GitHub Pages from the main branch and / (root).
-4. Open the published site and select New Project.
-5. Import either a default two-color Stitch Fiddle mosaic PDF or a compatible JSON file.
-6. Read README.md for public documentation, privacy details, backups, iPhone use, and troubleshooting.
+For users:
+1. Open index.html through a hosted HTTPS site such as GitHub Pages.
+2. Select New Project.
+3. Import a supported Stitch Fiddle PDF or compatible JSON.
+4. Confirm the preview, then create the project.
+5. On iPhone, select Crochet Mode and add the site to the Home Screen.
+6. Download regular full-library backups.
+
+For GitHub Pages:
+Upload every file and folder in this package to the repository root.
+Keep vendor/, icons/, tests/, .github/, and .nojekyll.
+Enable Pages from main / root.
+
+See README.md for the full public guide.

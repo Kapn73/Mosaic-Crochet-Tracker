@@ -1,0 +1,24 @@
+MOSAIC CROCHET PROJECT VIEWER
+STABILITY & MOBILE RELEASE VALIDATION
+
+- JavaScript syntax: passed (7 files)
+- Automated release test: passed
+- HTML control references and embedded demo JSON: passed
+- PWA manifest and app icons: passed
+- Offline application shell: passed
+- Private pattern files and identifiers: absent
+- Default PDF regression: passed (267×200 exact; 251×150 visual equivalence)
+
+Release highlights:
+- Direct PDF and JSON import
+- Strict public-file validation
+- Import preview, flip, color swap, and diagnostics
+- Exact-stitch tracking and 20-action undo
+- iPhone Crochet Mode and sticky controls
+- Compact progress records and emergency recovery journal
+- Merge/replace restore with recovery
+- Editable yarn colors
+- Offline PWA support
+- Automated GitHub Actions validation
+
+The public package contains no private pattern PDFs or converted private charts.

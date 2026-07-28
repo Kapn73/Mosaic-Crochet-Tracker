@@ -4,8 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#7c3aed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>Mosaic Crochet Viewer</title>
-  <link rel="stylesheet" href="viewer.css?v=3">
+  <link rel="stylesheet" href="viewer.css?v=4">
 </head>
 <body>
   <header class="topbar">
@@ -16,6 +21,8 @@
     <div class="top-actions">
       <button id="changeProject" class="primary" type="button">Change Project</button>
       <button id="newProject" type="button">New Project</button>
+      <button id="toggleCrochetMode" type="button">Crochet Mode</button>
+      <button id="undoAction" type="button" disabled>Undo</button>
       <span id="backupStatusChip" class="backup-chip">Checking backup...</span>
       <button id="backupNow" type="button">Back Up Now</button>
       <button id="exportProgress" type="button">Export progress</button>
@@ -29,7 +36,7 @@
   <main class="app-layout">
     <aside class="sidebar" aria-label="Chart controls">
       <section class="panel current-panel">
-        <h2>Current segment</h2>
+        <h2>Current position</h2>
 
         <div class="current-position">
           <div>
@@ -39,6 +46,10 @@
           <div>
             <span class="position-label">Segment</span>
             <strong><span id="currentSegment">1</span> of <span id="segmentTotal">5</span></strong>
+          </div>
+          <div>
+            <span class="position-label">Stitch</span>
+            <strong id="currentStitch">1</strong>
           </div>
         </div>
 
@@ -58,6 +69,16 @@
           <button id="nextSegment" type="button">Next segment</button>
           <button id="toggleSegment" type="button">Complete segment</button>
           <button id="completeNext" class="primary" type="button">Complete &amp; next</button>
+        </div>
+
+        <div class="stitch-control-block">
+          <p class="subtle-note"><strong>Exact stitch:</strong> <span id="stitchPositionLabel">1 of 10 in this segment</span></p>
+          <div class="control-grid two">
+            <button id="previousStitch" type="button">Previous stitch</button>
+            <button id="nextStitch" type="button">Next stitch</button>
+            <button id="toggleStitch" type="button">Complete stitch</button>
+            <button id="completeStitchNext" class="primary" type="button">Complete stitch &amp; next</button>
+          </div>
         </div>
 
         <div class="jump-grid">
@@ -91,6 +112,21 @@
         <div class="segment-progress-track" role="progressbar" aria-label="Current segment progress" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0">
           <div id="segmentProgressBar" class="segment-progress-bar"></div>
         </div>
+      </section>
+
+      <section class="panel row-change-panel" aria-live="polite">
+        <h2>Row guidance</h2>
+        <div class="row-guidance">
+          <div>
+            <span class="position-label">Current row color</span>
+            <strong><span id="currentRowColorSwatch" class="color-swatch"></span> <span id="currentRowColor">-</span></strong>
+          </div>
+          <div>
+            <span class="position-label">Next row color</span>
+            <strong><span id="nextRowColorSwatch" class="color-swatch"></span> <span id="nextRowColor">-</span></strong>
+          </div>
+        </div>
+        <p id="colorChangeNotice" class="subtle-note">Row color guidance will appear here.</p>
       </section>
 
       <section class="panel">
@@ -132,7 +168,7 @@
           <button id="zoomIn" type="button">+ Zoom</button>
           <button id="fitSegment" class="primary" type="button">Fit segment</button>
           <button id="fitWidth" type="button">Fit whole chart</button>
-          <button id="scrollCurrent" class="full-grid" type="button">Find current segment</button>
+          <button id="scrollCurrent" class="full-grid" type="button">Find active stitch</button>
         </div>
 
         <label class="check-row">
@@ -142,6 +178,14 @@
         <label class="check-row"><input id="showGrid" type="checkbox" checked> Show grid lines</label>
         <label class="check-row"><input id="showSymbols" type="checkbox" checked> Show X symbols for double crochet</label>
         <label class="check-row"><input id="showFoundation" type="checkbox"> Show foundation chain</label>
+        <label class="check-row"><input id="autoCenter" type="checkbox" checked> Keep the active stitch centered</label>
+      </section>
+
+      <section class="panel yarn-editor-panel">
+        <h2>Yarn colors</h2>
+        <p class="subtle-note">Rename or recolor the chart for the yarn being used. Pattern stitches are unchanged.</p>
+        <div id="yarnColorEditor" class="yarn-color-editor"></div>
+        <button id="saveYarnColors" type="button" class="full">Save yarn colors</button>
       </section>
 
       <section class="panel legend-panel">
@@ -157,7 +201,7 @@
 
       <section class="panel tips">
         <h2>Keyboard</h2>
-        <p>Left and right move between stitch segments. Up and down move between rows. Space completes or clears the current segment. Enter completes it and advances.</p>
+        <p>Left and right move between exact stitches. Up and down move between rows. Space completes or clears the active stitch. Enter completes it and advances. Bracket keys move between segments.</p>
         <p>You can change the segment size to 1, 10, 15, 38, or any other stitch count up to the full row width. Only cells containing an X are double crochet.</p>
       </section>
     </aside>
@@ -166,7 +210,7 @@
       <div class="chart-toolbar">
         <span id="status" class="status" aria-live="polite">Loading chart...</span>
         <strong id="focusLabel" class="focus-label">Row 1 · Segment 1 · Stitches 1–10</strong>
-        <span id="hoverInfo" class="hover-info">Click any cell to select its current-size segment</span>
+        <span id="hoverInfo" class="hover-info">Tap any cell to select that exact stitch</span>
       </div>
 
       <div id="chartViewport" class="chart-viewport">
@@ -176,6 +220,17 @@
       </div>
     </section>
   </main>
+
+  <nav id="mobileCrochetDock" class="mobile-crochet-dock" aria-label="Crochet controls">
+    <button id="mobilePrevious" type="button" aria-label="Previous stitch">←</button>
+    <button id="mobileUndo" type="button" disabled>Undo</button>
+    <div class="mobile-position">
+      <strong id="mobilePosition">Row 1 · Stitch 1</strong>
+      <span id="mobileRange">Segment 1</span>
+    </div>
+    <button id="mobileCompleteNext" class="primary" type="button">Complete &amp; Next</button>
+    <button id="mobileNext" type="button" aria-label="Next stitch">→</button>
+  </nav>
 
   <!-- Embedded starter chart data keeps viewer.html working when opened directly. -->
   <script id="embeddedChartData" type="application/json">{
@@ -575,7 +630,8 @@
     }
   ]
 }</script>
-  <script src="project-store.js?v=3"></script>
-  <script src="viewer.js?v=3"></script>
+  <script src="project-store.js?v=4"></script>
+  <script src="viewer.js?v=4"></script>
+  <script src="pwa.js?v=4"></script>
 </body>
 </html>

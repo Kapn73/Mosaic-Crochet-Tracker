@@ -1,38 +1,90 @@
 # Stitch Fiddle PDF importer
 
-## Supported input
+The importer reads the normal free PDF export produced by a default two-color
+Stitch Fiddle overlay mosaic crochet chart.
 
-The importer is designed for the normal free PDF exported from a two-color Stitch Fiddle mosaic
-crochet chart.
+## Local processing
 
-It reads the PDF's vector rectangles and embedded stitch-font symbols directly. It does not use
-OCR and does not estimate the design from a screenshot.
+The selected PDF is read by JavaScript in the browser. It is not sent to a
+server, GitHub repository, analytics service, or remote database.
 
-## Conversion rules
+## What is extracted
 
-- No symbol: `s` — single crochet, shown as a blank cell
-- Default double-crochet glyph: `d` — shown as X
-- Default border glyph: `b` — shown as BS
-- Foundation-chain glyph: `c`
-- Color A row marker: working color A
-- Color B row marker: working color B
+The importer locates the chart page with the largest compatible vector grid
+and reads:
 
-The visible PDF row is reversed when stored because the viewer displays stitch 1 on the right.
-This prevents the imported design from appearing horizontally mirrored.
+- Chart width
+- Chart row count
+- Vector cell colors
+- Embedded stitch symbols
+- Color A and Color B row markers
+- Border stitches
+- Foundation chain
+- Row and stitch orientation
 
-## Validation
+The result is converted to the viewer's internal JSON chart structure and
+validated before project creation.
 
-The import is rejected when:
+## Import preview
 
-- A complete rectangular chart grid cannot be found
-- Color A and Color B markers cannot be identified
-- A row is missing cells
-- An unknown stitch symbol appears
-- The foundation row is not a complete chain row
-- The PDF uses an unsupported stream compression method
-- The chart exceeds the current safety limit of 200,000 grid cells
+After extraction, the import window displays a locally rendered preview.
 
-## Privacy
+Available controls:
 
-The PDF is read in the browser from the selected local file. The source PDF is not written to the
-repository, and the converted project is stored in the user's browser and optional backup file.
+- **Flip Horizontally** reverses every row, the foundation row, and color data.
+- **Swap Colors** swaps the displayed palette entries without changing stitch
+  placement.
+- **Copy Diagnostics** copies importer version, dimensions, stitch counts,
+  palette, source metadata, and any error information.
+- **Download Converted JSON** saves the locally generated chart data.
+
+## Compatibility assumptions
+
+The current parser is intended for the default two-color export layout:
+
+- One legend page
+- One vector chart page
+- One color marker column on each side
+- Two working colors
+- Blank single-crochet cells
+- Embedded double-crochet, border, and chain glyphs
+
+It does not use OCR.
+
+## Rejected inputs
+
+The importer rejects:
+
+- Non-PDF files
+- Scanned or image-only pages
+- Incomplete grids
+- Unknown symbol patterns
+- Unsupported compressed streams
+- Charts above 200,000 cells
+- Files where a reliable chart page cannot be identified
+
+The importer reports an error code rather than silently guessing.
+
+## Tested default exports
+
+Release validation has been performed against default exports with these
+dimensions:
+
+- 267 rows × 200 stitches
+- 251 rows × 150 stitches
+
+The private source patterns used during development are not included in the
+public repository.
+
+## Orientation
+
+The viewer displays stitch 1 on the right. Imported rows are stored in that
+orientation. The preview should still be checked before project creation
+because PDF layouts may change in future exports.
+
+## Future compatibility
+
+A future Stitch Fiddle PDF change could require a parser update. Include the
+copied diagnostics and the non-confidential error details when filing an issue.
+Do not publicly attach a copyrighted pattern PDF unless redistribution is
+permitted.

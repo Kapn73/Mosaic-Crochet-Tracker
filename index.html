@@ -4,8 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#7c3aed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>Mosaic Crochet Projects</title>
-  <link rel="stylesheet" href="library.css?v=3">
+  <link rel="stylesheet" href="library.css?v=4">
 </head>
 <body>
   <main class="library-shell">
@@ -37,6 +42,7 @@
           <input id="restoreBackup" type="file" accept="application/json,.json">
         </label>
 
+        <button id="undoRestore" class="hidden" type="button">Undo Last Restore</button>
         <button id="disconnectBackup" class="danger hidden" type="button">Disconnect</button>
       </div>
 
@@ -44,6 +50,25 @@
         When prompted, choose a file inside your iCloud Drive or Google Drive folder.
         The viewer will update that file automatically after project changes.
       </p>
+    </section>
+
+    <section class="library-tools" aria-label="Project filters">
+      <label>
+        Search projects
+        <input id="projectSearch" type="search" placeholder="Search by project name">
+      </label>
+      <label>
+        Sort
+        <select id="projectSort">
+          <option value="recent">Recently used</option>
+          <option value="name">Project name</option>
+          <option value="progress">Progress</option>
+        </select>
+      </label>
+      <label class="check-row compact-check">
+        <input id="showArchived" type="checkbox">
+        Show archived projects
+      </label>
     </section>
 
     <section id="projectList" class="project-list" aria-live="polite">
@@ -85,11 +110,57 @@
 
       <div id="filePreview" class="file-preview" aria-live="polite">Select a PDF or JSON file to check it.</div>
 
+      <section id="importPreviewPanel" class="import-preview-panel hidden" aria-labelledby="importPreviewTitle">
+        <div class="import-preview-heading">
+          <div>
+            <h3 id="importPreviewTitle">Import preview</h3>
+            <p>Confirm the orientation and colors before creating the project.</p>
+          </div>
+          <span id="importerVersion" class="version-badge"></span>
+        </div>
+
+        <div class="preview-canvas-wrap">
+          <canvas id="importPreviewCanvas" width="480" height="360" aria-label="Preview of imported crochet chart"></canvas>
+        </div>
+
+        <div class="preview-actions">
+          <button id="flipImport" type="button">Flip Horizontally</button>
+          <button id="swapImportColors" type="button">Swap Colors</button>
+          <button id="copyDiagnostics" type="button">Copy Diagnostics</button>
+        </div>
+        <pre id="importDiagnostics" class="import-diagnostics"></pre>
+      </section>
+
       <button id="downloadConvertedJson" class="hidden" type="button">Download Converted JSON</button>
 
       <div class="dialog-actions">
         <button id="cancelNewProject" type="button">Cancel</button>
         <button id="createProject" class="primary" type="button" disabled>Create Project</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="restoreDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="restoreTitle">
+    <section class="dialog-card restore-card">
+      <header class="dialog-header">
+        <div>
+          <h2 id="restoreTitle">Restore Library Backup</h2>
+          <p id="restoreSummary">Review the projects in this backup.</p>
+        </div>
+        <button id="closeRestoreDialog" class="icon-button" type="button" aria-label="Close">×</button>
+      </header>
+
+      <div id="restoreProjectList" class="restore-project-list"></div>
+
+      <div class="restore-warning">
+        <strong>Merge</strong> keeps current projects and imports the backup with new IDs when needed.
+        <strong>Replace</strong> saves a recovery copy, then replaces the current library.
+      </div>
+
+      <div class="dialog-actions restore-actions">
+        <button id="cancelRestore" type="button">Cancel</button>
+        <button id="mergeRestore" type="button">Merge Libraries</button>
+        <button id="replaceRestore" class="danger" type="button">Replace Library</button>
       </div>
     </section>
   </div>
@@ -510,9 +581,10 @@
     }
   ]
 }</script>
-  <script src="vendor/pako_inflate.min.js?v=3"></script>
-  <script src="stitch-fiddle-pdf.js?v=3"></script>
-  <script src="project-store.js?v=3"></script>
-  <script src="library.js?v=3"></script>
+  <script src="vendor/pako_inflate.min.js?v=4"></script>
+  <script src="stitch-fiddle-pdf.js?v=4"></script>
+  <script src="project-store.js?v=4"></script>
+  <script src="library.js?v=4"></script>
+  <script src="pwa.js?v=4"></script>
 </body>
 </html>

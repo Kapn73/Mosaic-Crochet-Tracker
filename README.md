@@ -1,16 +1,17 @@
 # Mosaic Crochet Project Viewer
 
 A privacy-focused browser app for importing mosaic crochet charts, breaking
-large rows into manageable sections, and tracking progress one stitch at a
-time.
+large rows into manageable sections, and tracking progress down to the exact
+stitch.
 
 The viewer accepts:
 
 - Default two-color Stitch Fiddle overlay mosaic crochet PDF exports
 - Compatible Mosaic Crochet Project Viewer JSON files
 
-Supported PDFs are converted directly in the browser. No account, server
-upload, paid conversion service, or separate JSON conversion step is required.
+Supported PDFs are converted directly in the browser. No account, paid
+conversion service, server upload, or separate JSON conversion step is
+required.
 
 ## Start using the viewer
 
@@ -18,32 +19,71 @@ Open the hosted viewer in a modern browser.
 
 1. Select **New Project**.
 2. Choose a supported PDF or JSON file.
-3. Review the detected chart size and stitch totals.
-4. Enter a project name.
-5. Select **Create Project**.
-6. Open the project and begin tracking progress.
+3. Review the generated chart preview.
+4. Use **Flip Horizontally** or **Swap Colors** when needed.
+5. Enter a project name.
+6. Select **Create Project**.
+7. Open the project and begin tracking progress.
 
 A built-in **Geometric Bloom Demo** is included so the viewer can be explored
 without importing a personal pattern.
 
 ## Main features
 
+### Importing
+
 - Direct import of supported Stitch Fiddle PDF exports
 - Import of compatible JSON chart files
+- Local PDF conversion with no pattern upload
+- Pre-import chart preview
+- Manual horizontal flip and color swap
+- Downloadable converted JSON
+- Import diagnostics with a copy button
+- Strict chart, palette, row, and stitch validation
+- 200,000-cell chart safety limit
+
+### Progress tracking
+
 - Multiple named crochet projects
-- Automatic progress saving for each project
-- Adjustable working sections from 1 stitch through the full row
-- Current row, segment, and stitch-range tracking
+- Exact current row, segment, and stitch
+- Adjustable segment sizes from 1 stitch through the full row
+- Complete or clear one stitch, one segment, one row, or all progress
+- Complete-and-advance controls
+- Up to 20 in-session undo actions
+- Current and next row color guidance
+- Automatic centering on the active stitch
+- Emergency recovery journal for the latest progress
+- Compact progress storage separate from chart data
+
+### Display
+
 - Blank cells displayed as single crochet
 - X-marked cells displayed as double crochet
 - Border-stitch and foundation-chain support
-- Automatic correction of PDF left/right orientation
-- Retina-sharp chart rendering
-- Adjustable zoom and focus settings
-- Complete library backup and restore
-- Optional automatic backup to a selected desktop file
-- iPhone and desktop browser support
+- Retina-sharp visible-area rendering
+- Zoom from 4 to 120 pixels per stitch
+- Focus mode that dims everything outside the current segment
+- Optional grid, symbols, and foundation row
+- Editable yarn names and colors without changing the pattern
 - Light and dark mode support
+
+### Mobile and offline use
+
+- iPhone-first Crochet Mode
+- Sticky bottom controls on small screens
+- Add to Home Screen support
+- Progressive Web App manifest and icons
+- Offline app-shell caching after the first successful visit
+- Update notification when a new release is available
+
+### Backups and library management
+
+- Full-library download and restore
+- Merge or replace when restoring a backup
+- Recovery copy created before replacement
+- Undo the last full-library restore
+- Optional automatic desktop backup to a selected file
+- Search, sort, archive, unarchive, duplicate, rename, and delete projects
 
 ## Supported Stitch Fiddle PDFs
 
@@ -72,9 +112,9 @@ It does not use OCR and does not estimate cells from a screenshot.
 | Border-stitch symbol | `b` | BS |
 | Foundation-chain symbol | `c` | Chain symbol |
 
-The importer also reverses each stored row when necessary because the viewer
-places stitch 1 on the right. This prevents supported PDF patterns from
-appearing horizontally mirrored.
+The importer stores stitch 1 on the right to match the viewer's chart
+orientation. A visual preview is shown before project creation, and
+**Flip Horizontally** remains available for any unusual export.
 
 ### PDFs that are not currently supported
 
@@ -103,11 +143,18 @@ Compatible JSON files can also be imported. JSON is useful for:
 - Charts created specifically for this viewer
 - Sharing chart data when redistribution is permitted
 
-The required structure is documented in [JSON_FORMAT.md](JSON_FORMAT.md).
+JSON imports are checked for:
 
-After a PDF is successfully read, **Download Converted JSON** is available as
-an optional convenience. Downloading the converted JSON is not required to use
-the project.
+- Valid dimensions
+- Complete and unique row numbering
+- Exact color and stitch string lengths
+- Defined palette keys
+- Six-digit hexadecimal colors
+- Supported stitch codes only
+- Valid working colors
+- The same 200,000-cell safety limit used by the PDF importer
+
+The required structure is documented in [JSON_FORMAT.md](JSON_FORMAT.md).
 
 ## Privacy
 
@@ -124,39 +171,62 @@ Other visitors to the same public website cannot see:
 - Converted chart data
 - Project names
 - Completed stitches
-- Current rows or segments
+- Current rows, segments, or stitches
 - Backup files
 
 The public repository contains only the application files, documentation,
-third-party dependency notices, and the original demo chart.
+third-party dependency notices, automated tests, and the original demo chart.
 
-## Progress storage
+See [PRIVACY.md](PRIVACY.md) for a focused privacy explanation.
 
-Projects and progress are stored in the browser using IndexedDB, with
-localStorage available as a fallback.
+## Progress storage and recovery
 
-Saved data includes:
+Projects use IndexedDB when available, with localStorage as a fallback.
 
-- Imported chart data
-- Project names
+Chart records and progress records are stored separately. This means normal
+progress changes update a compact bitset and position record rather than
+rewriting the entire chart.
+
+Saved progress includes:
+
 - Completed stitches
-- Current row and segment
+- Current row, segment, and exact stitch
 - Segment size
 - Zoom level
-- Grid, symbol, focus, and foundation-row settings
+- Focus, grid, symbol, and foundation settings
+- Auto-centering preference
+- Crochet Mode preference
 
-Browser storage belongs to a specific browser, device, browser profile, and
-website address. Clearing browser data or removing the browser may erase the
-working copy.
+A small emergency recovery journal is written immediately when progress
+changes. It helps recover the latest position if the browser closes before an
+IndexedDB save completes.
+
+Browser storage still belongs to a specific browser, device, browser profile,
+and website address. Clearing browser data may erase the working copy, so
+regular backups remain important.
+
+## Undo
+
+The viewer keeps the latest 20 progress-changing actions during the current
+session. Undo supports:
+
+- Stitch changes
+- Segment changes
+- Row completion or clearing
+- Complete-and-advance actions
+- Resetting all progress
+
+The undo history is intentionally temporary and is cleared when the viewer
+page is closed or reloaded.
 
 ## Backups
 
 ### Download Backup
 
 **Download Backup** creates one JSON file containing the complete project
-library and all saved progress.
+library, chart data, positions, settings, and progress.
 
-Store the file somewhere safe, such as:
+Store it somewhere safe, such as:
 
 - iCloud Drive
 - Google Drive
@@ -167,11 +237,16 @@ Store the file somewhere safe, such as:
 
 ### Restore Backup
 
-**Restore Backup** replaces the current browser library with the projects and
-progress contained in a saved backup.
+After a backup is selected, the viewer shows the projects it contains and
+offers two choices:
 
-Restoring does not merge two independent libraries. The selected backup
-becomes the current library.
+- **Merge Libraries** keeps current projects and imports the backup. Duplicate
+  IDs and names are adjusted automatically.
+- **Replace Library** saves a recovery copy and then replaces the current
+  browser library.
+
+After a replacement, **Undo Last Restore** can swap the current library with
+the recovery copy saved before the restore.
 
 ### Automatic backup
 
@@ -182,22 +257,43 @@ The selected file may be located in a cloud-synced folder such as iCloud Drive
 or Google Drive.
 
 Automatic selected-file writing is not available in every browser. Manual
-**Download Backup** and **Restore Backup** remain available as the universal
-fallback.
+**Download Backup** and **Restore Backup** remain the universal fallback.
 
 ## Using the viewer on iPhone
 
 1. Open the hosted viewer in Safari.
 2. Select **New Project**.
 3. Choose a supported PDF or JSON file from the Files app.
-4. Import the chart and begin tracking progress.
-5. Use **Share → Add to Home Screen** for app-like access.
+4. Confirm the import preview.
+5. Create the project and load it.
+6. Select **Crochet Mode** for a chart-first layout.
+7. Use **Share → Add to Home Screen** for app-like access.
 
-The Home Screen version still stores its projects locally on the iPhone.
+On small screens, a fixed bottom toolbar provides:
+
+- Previous stitch
+- Undo
+- Current row and stitch
+- Complete stitch and advance
+- Next stitch
+
+The Home Screen version still stores projects locally on the iPhone.
 
 Automatic selected-file backup may be unavailable in iPhone Safari. Use
-**Download Backup** and save the backup in iCloud Drive or another accessible
+**Download Backup** and save the file in iCloud Drive or another accessible
 location.
+
+## Offline use
+
+After the hosted viewer has loaded successfully once, the service worker
+caches the application shell. The viewer can then reopen without a network
+connection in browsers that support Progressive Web Apps and service workers.
+
+Imported projects are already local. The service worker caches the app code,
+not personal PDF files or backup files.
+
+When a new version is published, the viewer displays an update banner. Select
+**Update** to activate it.
 
 ## Using the same projects on multiple devices
 
@@ -209,10 +305,42 @@ To continue on another device:
 1. Download a fresh backup on the device used most recently.
 2. Save it in a shared location such as iCloud Drive.
 3. Open the viewer on the second device.
-4. Restore that backup before continuing.
+4. Restore or merge that backup before continuing.
 
 Avoid making separate progress on both devices without transferring the latest
 backup. Restoring an older file can overwrite newer progress.
+
+## Yarn colors
+
+The **Yarn colors** panel can rename or recolor palette entries after a chart
+is imported.
+
+This affects only the viewer's display and saved project data. It does not
+change the color layout, row structure, or stitch instructions.
+
+## Project library tools
+
+The project screen supports:
+
+- Search by project name
+- Sort by recent use, name, or completion percentage
+- Archive completed or inactive projects
+- Show or hide archived projects
+- Duplicate a project with its current progress
+- Rename and delete projects
+
+## Keyboard controls
+
+When focus is not inside a form control:
+
+| Key | Action |
+|---|---|
+| Left / Right Arrow | Move between exact stitches |
+| Up / Down Arrow | Move between rows |
+| Space | Complete or clear the active stitch |
+| Enter | Complete the active stitch and advance |
+| `[` / `]` | Move between segments |
+| Command/Ctrl + Z | Undo the latest progress action |
 
 ## Troubleshooting
 
@@ -222,11 +350,18 @@ Confirm that it is the original default two-color Stitch Fiddle overlay mosaic
 crochet PDF export. Scans, screenshots, and print-to-PDF copies may no longer
 contain the vector cells and embedded stitch symbols needed by the importer.
 
+Use **Copy Diagnostics** in the import preview when reporting a problem.
+
 ### A pattern looks mirrored
 
-Current PDF imports correct the orientation automatically. Delete the
-incorrectly imported project and import the original PDF again using the
-current version of the viewer.
+Use the import preview's **Flip Horizontally** control before creating the
+project. For an already imported project, delete it and import the original
+PDF again with the correct preview orientation.
+
+### The colors are reversed
+
+Use **Swap Colors** in the import preview, or edit the yarn names and colors
+inside the loaded project.
 
 ### Projects disappeared after the site address changed
 
@@ -236,12 +371,13 @@ library backup at the new address.
 ### Automatic backup is unavailable
 
 Use **Download Backup** and save the file in a safe location. Automatic backup
-depends on browser support and file permission.
+depends on browser and file-permission support.
 
 ### The website still shows an older version
 
-Reload the page after the latest deployment finishes. A hard refresh may be
-needed if the browser cached older JavaScript files.
+Reload the page after deployment finishes. Select **Update** when the new
+version banner appears. A hard refresh may be needed if an older service worker
+or browser cache remains active.
 
 ## For repository owners and self-hosters
 
@@ -251,7 +387,8 @@ code.
 ### GitHub Pages deployment
 
 1. Upload all files and folders to the repository root.
-2. Confirm that `index.html`, `stitch-fiddle-pdf.js`, and `vendor/` are present.
+2. Confirm that `index.html`, `stitch-fiddle-pdf.js`, `service-worker.js`,
+   `manifest.webmanifest`, `icons/`, and `vendor/` are present.
 3. Commit the files to the `main` branch.
 4. Open **Settings → Pages**.
 5. Choose **Deploy from a branch**.
@@ -268,28 +405,58 @@ plain static site.
 3. Keep the same repository and GitHub Pages address when possible.
 4. Commit the updated files.
 5. Reload the site after deployment completes.
+6. Select **Update** when the PWA update banner appears.
 
 Keeping the same site address allows existing browser storage to remain
-associated with the viewer. A backup is still strongly recommended.
+associated with the viewer.
+
+## Automated validation
+
+The repository includes a dependency-free Node.js validation script and a
+GitHub Actions workflow.
+
+The workflow checks:
+
+- JavaScript syntax
+- Required release files
+- PWA manifest settings
+- Demo chart dimensions
+- Project storage round-tripping
+- Exact-stitch progress persistence
+- Rejection of unknown stitch codes
+- Rejection of unsafe palette color values
+
+Run locally with:
+
+```bash
+node tests/validate-release.js
+```
 
 ## Repository contents
 
 | File or folder | Purpose |
 |---|---|
-| `index.html` | Project library and import screen |
+| `index.html` | Project library, importing, preview, and backup screen |
 | `viewer.html` | Interactive chart viewer |
-| `library.js` | Project-library and import interface |
+| `library.js` | Project library and import interface |
 | `stitch-fiddle-pdf.js` | Local Stitch Fiddle PDF parser |
-| `project-store.js` | Project storage, backup, and restore |
-| `viewer.js` | Chart rendering and progress tracking |
-| `library.css` | Project-library styling |
-| `viewer.css` | Chart-viewer styling |
+| `project-store.js` | Project, compact progress, recovery, and backup storage |
+| `viewer.js` | Rendering, navigation, undo, and exact-stitch tracking |
+| `library.css` | Project-library and import styles |
+| `viewer.css` | Viewer and mobile Crochet Mode styles |
+| `manifest.webmanifest` | Installable app metadata |
+| `service-worker.js` | Offline application caching |
+| `pwa.js` | Service-worker registration and update prompt |
+| `icons/` | Home Screen and PWA icons |
 | `vendor/` | Bundled PDF decompression dependency |
 | `demo-geometric-bloom.json` | Original public demo chart |
 | `PDF_IMPORT.md` | PDF importer details |
 | `JSON_FORMAT.md` | Compatible JSON schema |
+| `PRIVACY.md` | Public privacy explanation |
 | `THIRD_PARTY_NOTICES.md` | Third-party license notices |
 | `RELEASE_NOTES.md` | Release history |
+| `tests/` | Dependency-free validation test |
+| `.github/workflows/` | Automated GitHub validation |
 | `LICENSE` | Project license |
 
 ## Copyright and pattern responsibility
@@ -315,5 +482,5 @@ by the importer.
 The application code and original Geometric Bloom demo chart are licensed
 under the [MIT License](LICENSE).
 
-The bundled pako decompression library is also MIT-licensed. Its notice is
-included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The bundled pako decompression library is MIT-licensed. Its notice is included
+in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
