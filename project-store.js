@@ -18,13 +18,17 @@
   const MAX_TITLE_LENGTH = 160;
   const MAX_PALETTE_NAME_LENGTH = 80;
   const MAX_SOURCE_FILE_NAME_LENGTH = 255;
+  const MAX_PROJECT_NOTES_LENGTH = 5000;
+  const MAX_ROW_NOTE_LENGTH = 1200;
+  const MAX_DETAIL_LENGTH = 240;
   const VALID_STITCH_CODES = new Set(["s", "d", "b", "c"]);
   const HEX_COLOR = /^#[0-9A-F]{6}$/i;
   const SAFE_PALETTE_KEY = /^[0-9A-Za-z]$/;
 
   const BACKUP_TYPE = "mosaic-crochet-project-library";
+  const PROJECT_BACKUP_TYPE = "mosaic-crochet-project";
   const BACKUP_SCHEMA_VERSION = 2;
-  const APP_DATA_VERSION = 3;
+  const APP_DATA_VERSION = 4;
   const AUTO_BACKUP_DELAY = 1200;
 
   const AUTO_BACKUP_ENABLED_KEY = "autoBackupEnabled";
@@ -77,6 +81,17 @@
   function normalizeProjectName(value, fallback = "Untitled project") {
     return cleanText(value, MAX_PROJECT_NAME_LENGTH, fallback);
   }
+  function cleanMultilineText(value, maximum) {
+    return String(value ?? "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+$/g, ""))
+      .join("\n")
+      .trim()
+      .slice(0, maximum);
+  }
+
 
   function slugify(value) {
     return cleanText(value, 120, "mosaic-chart")
@@ -109,6 +124,37 @@
       } else if (typeof value === "boolean") {
         normalized[safeKey] = value;
       }
+    }
+
+    return normalized;
+  }
+
+  function normalizeProjectDetails(details) {
+    const source = details && typeof details === "object" && !Array.isArray(details)
+      ? details
+      : {};
+
+    return {
+      yarnBrand: cleanText(source.yarnBrand, MAX_DETAIL_LENGTH),
+      hookSize: cleanText(source.hookSize, MAX_DETAIL_LENGTH),
+      gauge: cleanText(source.gauge, MAX_DETAIL_LENGTH),
+      startDate: /^\d{4}-\d{2}-\d{2}$/.test(String(source.startDate || ""))
+        ? String(source.startDate)
+        : ""
+    };
+  }
+
+  function normalizeRowNotes(rowNotes, chart) {
+    const normalized = {};
+    if (!rowNotes || typeof rowNotes !== "object" || Array.isArray(rowNotes)) {
+      return normalized;
+    }
+
+    for (const [key, value] of Object.entries(rowNotes)) {
+      const row = Number(key);
+      if (!Number.isInteger(row) || row < 1 || row > chart.dimensions.rows) continue;
+      const note = cleanMultilineText(value, MAX_ROW_NOTE_LENGTH);
+      if (note) normalized[String(row)] = note;
     }
 
     return normalized;
@@ -445,10 +491,22 @@
           typeof progress?.view?.showFoundation === "boolean"
             ? progress.view.showFoundation
             : false,
+        scrollMode:
+          ["center", "visible", "off"].includes(progress?.view?.scrollMode)
+            ? progress.view.scrollMode
+            : progress?.view?.autoCenter === false
+              ? "off"
+              : "center",
         autoCenter:
-          typeof progress?.view?.autoCenter === "boolean"
-            ? progress.view.autoCenter
-            : true,
+          ["center", "visible"].includes(progress?.view?.scrollMode)
+            ? true
+            : typeof progress?.view?.autoCenter === "boolean"
+              ? progress.view.autoCenter
+              : true,
+        keepScreenAwake:
+          typeof progress?.view?.keepScreenAwake === "boolean"
+            ? progress.view.keepScreenAwake
+            : false,
         crochetMode:
           typeof progress?.view?.crochetMode === "boolean"
             ? progress.view.crochetMode
@@ -480,7 +538,9 @@
         MAX_SOURCE_FILE_NAME_LENGTH
       ),
       archived: Boolean(project.archived),
-      notes: cleanText(project.notes, 2000),
+      notes: cleanMultilineText(project.notes, MAX_PROJECT_NOTES_LENGTH),
+      details: normalizeProjectDetails(project.details),
+      rowNotes: normalizeRowNotes(project.rowNotes, chart),
       createdAt: String(project.createdAt || now),
       updatedAt: String(project.updatedAt || now)
     };
@@ -588,6 +648,8 @@
       sourceFileName: project.sourceFileName || "",
       archived: Boolean(project.archived),
       notes: project.notes || "",
+      details: normalizeProjectDetails(project.details),
+      rowNotes: normalizeRowNotes(project.rowNotes, project.chart),
       createdAt: project.createdAt,
       updatedAt: project.updatedAt
     };
@@ -848,6 +910,9 @@
 
         return {
           ...stored,
+          notes: cleanMultilineText(stored.notes, MAX_PROJECT_NOTES_LENGTH),
+          details: normalizeProjectDetails(stored.details),
+          rowNotes: normalizeRowNotes(stored.rowNotes, stored.chart),
           progress,
           updatedAt: useRecovery
             ? recovery.record.updatedAt
@@ -886,6 +951,9 @@
 
     return {
       ...stored,
+      notes: cleanMultilineText(stored.notes, MAX_PROJECT_NOTES_LENGTH),
+      details: normalizeProjectDetails(stored.details),
+      rowNotes: normalizeRowNotes(stored.rowNotes, stored.chart),
       progress: useRecovery
         ? recovery.progress
         : progressFromRecord(progressRecord, stored.chart, stored.progress),
@@ -1000,6 +1068,8 @@
       ),
       archived: false,
       notes: "",
+      details: normalizeProjectDetails({}),
+      rowNotes: {},
       createdAt: now,
       updatedAt: now
     });
@@ -1200,6 +1270,8 @@
       sourceFileName: "demo-geometric-bloom.json",
       archived: false,
       notes: "",
+      details: normalizeProjectDetails({}),
+      rowNotes: {},
       createdAt: now,
       updatedAt: now
     });
@@ -1442,6 +1514,38 @@
     });
   }
 
+  async function buildProjectBackupPayload(projectId) {
+    const project = await get(projectId);
+    if (!project) throw new Error("Project not found.");
+
+    return {
+      backupType: PROJECT_BACKUP_TYPE,
+      schemaVersion: BACKUP_SCHEMA_VERSION,
+      appDataVersion: APP_DATA_VERSION,
+      exportedAt: new Date().toISOString(),
+      projectCount: 1,
+      projects: [clone(project)]
+    };
+  }
+
+  async function downloadProject(projectId) {
+    const payload = await buildProjectBackupPayload(projectId);
+    const project = payload.projects[0];
+    const blob = new Blob(
+      [JSON.stringify(payload, null, 2)],
+      { type: "application/json" }
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const safeName = slugify(project.name || "mosaic-crochet-project");
+
+    anchor.href = url;
+    anchor.download = `${safeName}-project-backup.json`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    return payload;
+  }
+
   async function downloadBackup() {
     const payload = await buildBackupPayload();
     const blob = new Blob(
@@ -1468,16 +1572,24 @@
       throw new Error("The selected backup is not valid JSON.");
     }
 
-    if (
-      payload?.backupType !== BACKUP_TYPE ||
-      !Array.isArray(payload.projects)
-    ) {
+    const isLibraryBackup =
+      payload?.backupType === BACKUP_TYPE && Array.isArray(payload.projects);
+    const isProjectBackup =
+      payload?.backupType === PROJECT_BACKUP_TYPE &&
+      (payload.project || Array.isArray(payload.projects));
+
+    if (!isLibraryBackup && !isProjectBackup) {
       throw new Error(
-        "This is not a compatible Mosaic Crochet library backup."
+        "This is not a compatible Mosaic Crochet library or project backup."
       );
     }
 
-    const projects = payload.projects.map(normalizeProject);
+    const sourceProjects = isLibraryBackup
+      ? payload.projects
+      : Array.isArray(payload.projects)
+        ? payload.projects
+        : [payload.project];
+    const projects = sourceProjects.map(normalizeProject);
 
     return {
       payload,
@@ -1541,14 +1653,29 @@
     return await list();
   }
 
-  async function restoreBackupFile(file, restoreMode = "replace") {
+  async function restoreBackupFile(
+    file,
+    restoreMode = "replace",
+    selectedProjectIds = null
+  ) {
     const inspection = await inspectBackupFile(file);
+    const selectedIds = Array.isArray(selectedProjectIds)
+      ? new Set(selectedProjectIds.map(String))
+      : null;
+    const selectedProjects = selectedIds
+      ? inspection.projects.filter((project) => selectedIds.has(String(project.id)))
+      : inspection.projects;
+
+    if (!selectedProjects.length) {
+      throw new Error("Select at least one project to restore.");
+    }
+
     await savePreRestoreRecovery();
 
     const projects =
       restoreMode === "merge"
-        ? await mergeProjects(inspection.projects)
-        : await replaceAllProjects(inspection.projects);
+        ? await mergeProjects(selectedProjects)
+        : await replaceAllProjects(selectedProjects);
 
     await flushAutoBackup();
 
@@ -1590,7 +1717,9 @@
     normalizeProgress,
     saveRecoveryProgress,
     buildBackupPayload,
+    buildProjectBackupPayload,
     downloadBackup,
+    downloadProject,
     inspectBackupFile,
     restoreBackupFile,
     hasRestoreRecovery,

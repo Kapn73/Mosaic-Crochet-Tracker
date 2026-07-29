@@ -51,7 +51,9 @@ without importing a personal pattern.
 - Complete-and-advance controls
 - Up to 20 in-session undo actions
 - Current and next row color guidance
-- Automatic centering on the active stitch
+- Three chart-movement modes: center segment, keep segment visible, or no automatic movement
+- Enlarged working-segment strip with exact stitch numbers
+- Stitch-number ruler and work-direction guide
 - Emergency recovery journal for the latest progress
 - Compact progress storage separate from chart data
 
@@ -65,12 +67,15 @@ without importing a personal pattern.
 - Focus mode that dims everything outside the current segment
 - Optional grid, symbols, and foundation row
 - Editable yarn names and colors without changing the pattern
+- Project details, general notes, and notes for individual rows
 - Light and dark mode support
 
 ### Mobile and offline use
 
 - iPhone-first Crochet Mode
 - Sticky bottom controls on small screens
+- Screen-awake option for supported browsers
+- Accidental-tap protection that keeps scrolling and Complete & Next available
 - Add to Home Screen support
 - Progressive Web App manifest and icons
 - Offline app-shell caching after the first successful visit
@@ -79,6 +84,8 @@ without importing a personal pattern.
 ### Backups and library management
 
 - Full-library download and restore
+- Individual-project export
+- Selective restore of one or more projects from a backup
 - Merge or replace when restoring a backup
 - Recovery copy created before replacement
 - Undo the last full-library restore
@@ -194,7 +201,7 @@ Saved progress includes:
 - Segment size
 - Zoom level
 - Focus, grid, symbol, and foundation settings
-- Auto-centering preference
+- Working-segment auto-centering preference
 - Crochet Mode preference
 
 A small emergency recovery journal is written immediately when progress
@@ -204,6 +211,60 @@ IndexedDB save completes.
 Browser storage still belongs to a specific browser, device, browser profile,
 and website address. Clearing browser data may erase the working copy, so
 regular backups remain important.
+
+## Automatic chart movement
+
+The **Automatic chart movement** menu offers three behaviors:
+
+- **Center working segment** moves the chart so the complete active segment is
+  centered after navigation.
+- **Keep working segment visible** moves only when part of the active segment
+  would leave the viewport. This reduces unnecessary chart motion.
+- **Do not move automatically** leaves the chart exactly where the visitor
+  positioned it.
+
+The **Find current segment** button always centers the active segment once,
+regardless of the selected automatic mode.
+
+## Working-segment strip and stitch ruler
+
+A large strip above the chart shows only the current segment. It includes:
+
+- Enlarged chart cells
+- Exact stitch numbers
+- Double-crochet X symbols
+- Completed-stitch shading
+- A strong outline around the exact active stitch
+- A work-direction arrow
+
+The ruler above the full chart follows horizontal scrolling and labels stitch
+numbers at a spacing appropriate for the current zoom. Stitch 1 is shown on
+the right and higher stitch numbers continue toward the left.
+
+## Project details and row notes
+
+The **Project details** panel stores optional information such as:
+
+- Yarn brand or line
+- Hook size
+- Gauge
+- Start date
+- General project notes
+
+The **Row note** panel follows the active row. Notes can be saved for yarn
+changes, corrections, reminders, or any other row-specific information. Row
+notes are included in project exports and full-library backups.
+
+## Screen awake and accidental-tap protection
+
+**Keep screen awake while crocheting** requests a screen wake lock when the
+browser supports it. The lock is released when the viewer closes and is
+reacquired when the visible viewer returns.
+
+**Lock accidental taps** disables chart-cell selection and editing controls
+that could change a large amount of progress. Scrolling, stitch navigation,
+and the mobile **Complete & Next** button remain available. Unlocking requires
+a confirmation.
 
 ## Undo
 
@@ -237,16 +298,23 @@ Store it somewhere safe, such as:
 
 ### Restore Backup
 
-After a backup is selected, the viewer shows the projects it contains and
-offers two choices:
+After a backup is selected, the viewer shows every project it contains.
+Select all projects or only the ones that should be restored, then choose:
 
-- **Merge Libraries** keeps current projects and imports the backup. Duplicate
-  IDs and names are adjusted automatically.
+- **Merge Libraries** keeps current projects and imports the selected backup
+  projects. Duplicate IDs and names are adjusted automatically.
 - **Replace Library** saves a recovery copy and then replaces the current
-  browser library.
+  browser library with only the selected projects.
 
 After a replacement, **Undo Last Restore** can swap the current library with
 the recovery copy saved before the restore.
+
+### Export one project
+
+Each project card and loaded viewer includes **Export Project**. The downloaded
+file contains that chart, progress, yarn display colors, project details, and
+row notes. It can be imported through the same **Restore or Import Project**
+control used for full-library backups.
 
 ### Automatic backup
 
@@ -273,9 +341,13 @@ On small screens, a fixed bottom toolbar provides:
 
 - Previous stitch
 - Undo
+- Lock or unlock accidental-tap protection
 - Current row and stitch
 - Complete stitch and advance
 - Next stitch
+
+The enlarged working-segment strip and stitch ruler remain visible in Crochet
+Mode so the active section can be read without enlarging the full chart.
 
 The Home Screen version still stores projects locally on the iPhone.
 
@@ -327,6 +399,7 @@ The project screen supports:
 - Archive completed or inactive projects
 - Show or hide archived projects
 - Duplicate a project with its current progress
+- Export one project with its progress and notes
 - Rename and delete projects
 
 ## Keyboard controls
@@ -421,8 +494,10 @@ The workflow checks:
 - Required release files
 - PWA manifest settings
 - Demo chart dimensions
-- Project storage round-tripping
-- Exact-stitch progress persistence
+- Project storage, details, row notes, and individual backup round-tripping
+- Exact-stitch, scroll-mode, and screen-awake preference persistence
+- Selective project restore behavior
+- Viewer initialization with a mocked browser and canvas environment
 - Rejection of unknown stitch codes
 - Rejection of unsafe palette color values
 
@@ -430,6 +505,7 @@ Run locally with:
 
 ```bash
 node tests/validate-release.js
+node tests/validate-viewer-runtime.js
 ```
 
 ## Repository contents
@@ -440,8 +516,8 @@ node tests/validate-release.js
 | `viewer.html` | Interactive chart viewer |
 | `library.js` | Project library and import interface |
 | `stitch-fiddle-pdf.js` | Local Stitch Fiddle PDF parser |
-| `project-store.js` | Project, compact progress, recovery, and backup storage |
-| `viewer.js` | Rendering, navigation, undo, and exact-stitch tracking |
+| `project-store.js` | Project, notes, compact progress, recovery, individual export, and backup storage |
+| `viewer.js` | Rendering, ruler and segment strip, navigation, notes, wake lock, tap lock, undo, and exact-stitch tracking |
 | `library.css` | Project-library and import styles |
 | `viewer.css` | Viewer and mobile Crochet Mode styles |
 | `manifest.webmanifest` | Installable app metadata |
@@ -455,7 +531,7 @@ node tests/validate-release.js
 | `PRIVACY.md` | Public privacy explanation |
 | `THIRD_PARTY_NOTICES.md` | Third-party license notices |
 | `RELEASE_NOTES.md` | Release history |
-| `tests/` | Dependency-free validation test |
+| `tests/` | Dependency-free release and viewer-runtime validation tests |
 | `.github/workflows/` | Automated GitHub validation |
 | `LICENSE` | Project license |
 

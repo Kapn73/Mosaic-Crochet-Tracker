@@ -13,6 +13,7 @@
   let currentBackupStatus = null;
   let selectedRestoreFile = null;
   let selectedRestoreInspection = null;
+  let selectedRestoreProjectIds = new Set();
   let allProjects = [];
 
   const ui = {
@@ -47,6 +48,7 @@
     restoreDialog: $("restoreDialog"),
     restoreSummary: $("restoreSummary"),
     restoreProjectList: $("restoreProjectList"),
+    restoreSelectedCount: $("restoreSelectedCount"),
     mergeRestore: $("mergeRestore"),
     replaceRestore: $("replaceRestore")
   };
@@ -329,6 +331,14 @@
         await renderProjects();
       } catch (error) {
         alert(`Could not duplicate the project: ${error.message}`);
+      }
+    });
+
+    addButton("Export Project", "", async () => {
+      try {
+        await ProjectStore.downloadProject(project.id);
+      } catch (error) {
+        alert(`Could not export the project: ${error.message}`);
       }
     });
 
@@ -846,6 +856,7 @@
   function closeRestoreDialog() {
     selectedRestoreFile = null;
     selectedRestoreInspection = null;
+    selectedRestoreProjectIds = new Set();
     ui.restoreDialog.classList.add("hidden");
   }
 
@@ -855,6 +866,9 @@
 
     clearElement(ui.restoreProjectList);
     const summary = selectedRestoreInspection.summary;
+    selectedRestoreProjectIds = new Set(
+      summary.projects.map((project) => String(project.id))
+    );
     ui.restoreSummary.textContent =
       `${summary.projectCount} ${
         summary.projectCount === 1 ? "project" : "projects"
@@ -864,18 +878,42 @@
           : ""
       }.`;
 
+    const updateSelectedCount = () => {
+      const count = selectedRestoreProjectIds.size;
+      ui.restoreSelectedCount.textContent =
+        `${count} ${count === 1 ? "project" : "projects"} selected`;
+      ui.mergeRestore.disabled = count === 0;
+      ui.replaceRestore.disabled = count === 0;
+    };
+
     for (const project of summary.projects) {
-      const item = document.createElement("div");
-      item.className = "restore-project-item";
-      appendText(item, "strong", project.name);
+      const item = document.createElement("label");
+      item.className = "restore-project-item selectable";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = true;
+      checkbox.value = String(project.id);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) selectedRestoreProjectIds.add(checkbox.value);
+        else selectedRestoreProjectIds.delete(checkbox.value);
+        updateSelectedCount();
+      });
+
+      const copy = document.createElement("span");
+      copy.className = "restore-project-copy";
+      appendText(copy, "strong", project.name);
       appendText(
-        item,
+        copy,
         "span",
         `${project.rows} rows × ${project.stitchesPerRow} stitches · ${project.percent.toFixed(1)}% complete`
       );
+
+      item.append(checkbox, copy);
       ui.restoreProjectList.appendChild(item);
     }
 
+    updateSelectedCount();
     ui.restoreDialog.classList.remove("hidden");
   }
 
@@ -888,7 +926,8 @@
     try {
       const result = await ProjectStore.restoreBackupFile(
         selectedRestoreFile,
-        mode
+        mode,
+        [...selectedRestoreProjectIds]
       );
       closeRestoreDialog();
       await renderProjects();
@@ -979,6 +1018,28 @@
 
     $("closeRestoreDialog").addEventListener("click", closeRestoreDialog);
     $("cancelRestore").addEventListener("click", closeRestoreDialog);
+    $("selectAllRestore").addEventListener("click", () => {
+      if (!selectedRestoreInspection) return;
+      selectedRestoreProjectIds = new Set(
+        selectedRestoreInspection.summary.projects.map((project) => String(project.id))
+      );
+      for (const checkbox of ui.restoreProjectList.querySelectorAll('input[type="checkbox"]')) {
+        checkbox.checked = true;
+      }
+      const count = selectedRestoreProjectIds.size;
+      ui.restoreSelectedCount.textContent = `${count} ${count === 1 ? "project" : "projects"} selected`;
+      ui.mergeRestore.disabled = false;
+      ui.replaceRestore.disabled = false;
+    });
+    $("clearRestoreSelection").addEventListener("click", () => {
+      selectedRestoreProjectIds.clear();
+      for (const checkbox of ui.restoreProjectList.querySelectorAll('input[type="checkbox"]')) {
+        checkbox.checked = false;
+      }
+      ui.restoreSelectedCount.textContent = "0 projects selected";
+      ui.mergeRestore.disabled = true;
+      ui.replaceRestore.disabled = true;
+    });
     ui.mergeRestore.addEventListener("click", () => performRestore("merge"));
     ui.replaceRestore.addEventListener("click", () => performRestore("replace"));
 

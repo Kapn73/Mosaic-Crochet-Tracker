@@ -29,7 +29,8 @@ function testRequiredFiles() {
     "pwa.js",
     "icons/icon-192.png",
     "icons/icon-512.png",
-    "icons/apple-touch-icon.png"
+    "icons/apple-touch-icon.png",
+    "tests/validate-viewer-runtime.js"
   ];
 
   for (const name of required) {
@@ -117,14 +118,68 @@ async function testProjectStore() {
     {
       completed: ["1:1", "1:2"],
       current: { row: 2, segment: 1, stitch: 2 },
-      view: { segmentSize: 10 }
+      view: {
+        segmentSize: 10,
+        scrollMode: "visible",
+        keepScreenAwake: true
+      }
     },
     demo
   );
 
+  const projectWithNotes = await store.get(project.id);
+  projectWithNotes.notes = "Border with three rounds.\nAdd tassels after blocking.";
+  projectWithNotes.details = {
+    yarnBrand: "Validation Yarn",
+    hookSize: "5.5 mm",
+    gauge: "14 stitches = 4 inches",
+    startDate: "2026-07-28"
+  };
+  projectWithNotes.rowNotes = {
+    "2": "Start a new skein here.",
+    "999": "This invalid row must be discarded."
+  };
+  await store.put(projectWithNotes);
+
   const restored = await store.get(project.id);
   assert(restored.progress.completed.length === 2, "Progress did not round-trip.");
   assert(restored.progress.current.stitch === 2, "Exact stitch position did not round-trip.");
+  assert(restored.progress.view.scrollMode === "visible", "Scroll mode did not round-trip.");
+  assert(restored.progress.view.keepScreenAwake === true, "Screen-awake preference did not round-trip.");
+  assert(restored.notes.includes("\n"), "Multiline project notes did not preserve line breaks.");
+  assert(restored.details.hookSize === "5.5 mm", "Project details did not round-trip.");
+  assert(restored.rowNotes["2"] === "Start a new skein here.", "Row notes did not round-trip.");
+  assert(!restored.rowNotes["999"], "Invalid row notes were not discarded.");
+
+  const singleProjectBackup = await store.buildProjectBackupPayload(project.id);
+  assert(singleProjectBackup.backupType === "mosaic-crochet-project", "Individual project backup type is invalid.");
+  assert(singleProjectBackup.projects.length === 1, "Individual project backup must contain one project.");
+
+  const backupFile = {
+    size: JSON.stringify(singleProjectBackup).length,
+    async text() {
+      return JSON.stringify(singleProjectBackup);
+    }
+  };
+  const inspection = await store.inspectBackupFile(backupFile);
+  assert(inspection.summary.projectCount === 1, "Individual project backup inspection failed.");
+
+  const beforeMerge = (await store.list()).length;
+  const merged = await store.restoreBackupFile(
+    backupFile,
+    "merge",
+    [project.id]
+  );
+  assert(merged.projects.length === 1, "Selective project merge did not import one project.");
+  assert((await store.list()).length === beforeMerge + 1, "Selective project merge changed the wrong number of projects.");
+
+  let emptySelectionRejected = false;
+  try {
+    await store.restoreBackupFile(backupFile, "merge", []);
+  } catch {
+    emptySelectionRejected = true;
+  }
+  assert(emptySelectionRejected, "An empty selective restore must be rejected.");
 
   const malicious = JSON.parse(JSON.stringify(demo));
   malicious.rows[0].stitches =
@@ -152,10 +207,36 @@ async function testProjectStore() {
   assert(rejected, "Invalid palette colors must be rejected.");
 }
 
+function testUsabilityInterface() {
+  const viewer = read("viewer.html");
+  const library = read("index.html");
+  const viewerScript = read("viewer.js");
+
+  for (const id of [
+    "scrollMode",
+    "segmentStripCanvas",
+    "stitchRulerCanvas",
+    "projectNotes",
+    "rowNote",
+    "keepScreenAwake",
+    "toggleInteractionLock",
+    "exportProject"
+  ]) {
+    assert(viewer.includes(`id="${id}"`), `Viewer is missing usability control ${id}.`);
+  }
+
+  assert(library.includes('id="restoreSelectedCount"'), "Selective restore controls are missing.");
+  assert(viewerScript.includes('scrollMode === "visible"'), "Keep-visible scrolling is missing.");
+  assert(viewerScript.includes("navigator.wakeLock.request"), "Screen Wake Lock support is missing.");
+  assert(viewerScript.includes("drawActiveSegmentStrip"), "Active segment strip rendering is missing.");
+  assert(viewerScript.includes("drawStitchRuler"), "Stitch ruler rendering is missing.");
+}
+
 async function main() {
   testRequiredFiles();
   testManifest();
   testDemoShape();
+  testUsabilityInterface();
   await testProjectStore();
   console.log("Release validation passed.");
 }

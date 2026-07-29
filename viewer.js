@@ -13,6 +13,10 @@
   const ctx = canvas.getContext("2d", { alpha: false });
   const viewport = $("chartViewport");
   const stage = $("chartStage");
+  const segmentStripCanvas = $("segmentStripCanvas");
+  const segmentStripCtx = segmentStripCanvas.getContext("2d", { alpha: false });
+  const stitchRulerCanvas = $("stitchRulerCanvas");
+  const stitchRulerCtx = stitchRulerCanvas.getContext("2d", { alpha: true });
 
   let activeProject = null;
   let chart = null;
@@ -25,7 +29,10 @@
   let segmentSize = DEFAULT_SEGMENT_SIZE;
   let cellSize = 44;
   let showFoundation = false;
-  let autoCenter = true;
+  let scrollMode = "center";
+  let keepScreenAwake = false;
+  let wakeLockSentinel = null;
+  let controlsLocked = false;
   let crochetMode = false;
 
   let drawQueued = false;
@@ -36,6 +43,8 @@
   let currentBackupStatus = null;
   let undoStack = [];
   let suppressUndo = false;
+  let notesSaveTimer = null;
+  let rowNoteEditorRow = 0;
 
   const ui = {
     projectName: $("projectName"),
@@ -84,7 +93,21 @@
     showGrid: $("showGrid"),
     showSymbols: $("showSymbols"),
     showFoundation: $("showFoundation"),
-    autoCenter: $("autoCenter"),
+    scrollMode: $("scrollMode"),
+    keepScreenAwake: $("keepScreenAwake"),
+    wakeLockStatus: $("wakeLockStatus"),
+
+    activeSegmentStripSummary: $("activeSegmentStripSummary"),
+    activeSegmentDirection: $("activeSegmentDirection"),
+
+    yarnBrand: $("yarnBrand"),
+    hookSize: $("hookSize"),
+    gauge: $("gauge"),
+    projectStartDate: $("projectStartDate"),
+    projectNotes: $("projectNotes"),
+    rowNoteNumber: $("rowNoteNumber"),
+    rowNote: $("rowNote"),
+    rowNoteStatus: $("rowNoteStatus"),
 
     colorLegend: $("colorLegend"),
     yarnColorEditor: $("yarnColorEditor"),
@@ -93,7 +116,10 @@
     undoAction: $("undoAction"),
     mobileUndo: $("mobileUndo"),
     mobilePosition: $("mobilePosition"),
-    mobileRange: $("mobileRange")
+    mobileRange: $("mobileRange"),
+    topInteractionLock: $("toggleInteractionLock"),
+    sidebarInteractionLock: $("sidebarInteractionLock"),
+    mobileInteractionLock: $("mobileInteractionLock")
   };
 
   function embeddedData() {
@@ -215,7 +241,7 @@
     }
 
     requestAnimationFrame(() => {
-      if (autoCenter) scrollToCurrentStitch("auto");
+      applyAutomaticChartMovement("auto");
     });
   }
 
@@ -274,7 +300,224 @@
     requestAnimationFrame(() => {
       drawQueued = false;
       drawVisibleChart();
+      drawActiveSegmentStrip();
+      drawStitchRuler();
     });
+  }
+
+  function prepareAuxiliaryCanvas(target, context, cssWidth, cssHeight) {
+    const width = Math.max(1, Math.round(cssWidth));
+    const height = Math.max(1, Math.round(cssHeight));
+    const pixelWidth = Math.max(1, Math.round(width * dpr));
+    const pixelHeight = Math.max(1, Math.round(height * dpr));
+
+    if (target.width !== pixelWidth || target.height !== pixelHeight) {
+      target.width = pixelWidth;
+      target.height = pixelHeight;
+    }
+
+    target.style.width = `${width}px`;
+    target.style.height = `${height}px`;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.imageSmoothingEnabled = false;
+    context.clearRect(0, 0, width, height);
+
+    return { width, height };
+  }
+
+  function drawActiveSegmentStrip() {
+    if (!chart || !segmentStripCanvas?.parentElement) return;
+
+    const row = getRow(currentRow);
+    const bounds = segmentBounds(currentSegment);
+    const wrap = segmentStripCanvas.parentElement;
+    const visibleWidth = Math.max(280, wrap.clientWidth || 640);
+    const stripCellSize = clamp(
+      Math.floor(visibleWidth / Math.min(bounds.count, 12)),
+      44,
+      64
+    );
+    const labelHeight = 28;
+    const topPadding = 8;
+    const cssWidth = Math.max(visibleWidth, bounds.count * stripCellSize);
+    const cssHeight = stripCellSize + labelHeight + topPadding * 2;
+    const size = prepareAuxiliaryCanvas(
+      segmentStripCanvas,
+      segmentStripCtx,
+      cssWidth,
+      cssHeight
+    );
+
+    segmentStripCtx.fillStyle = "#111827";
+    segmentStripCtx.fillRect(0, 0, size.width, size.height);
+
+    for (let visualIndex = 0; visualIndex < bounds.count; visualIndex += 1) {
+      const stitch = bounds.end - visualIndex;
+      const chartIndex = stitch - 1;
+      const palette =
+        chart.palette[String(row.colors[chartIndex])] ||
+        Object.values(chart.palette)[0];
+      const x = visualIndex * stripCellSize;
+      const y = topPadding;
+      const code = row.stitches[chartIndex];
+      const key = cellKey(currentRow, stitch);
+
+      segmentStripCtx.fillStyle = palette.hex;
+      segmentStripCtx.fillRect(x, y, stripCellSize, stripCellSize);
+
+      if (completed.has(key)) {
+        segmentStripCtx.fillStyle = "rgba(34, 197, 94, 0.52)";
+        segmentStripCtx.fillRect(x, y, stripCellSize, stripCellSize);
+      }
+
+      segmentStripCtx.strokeStyle = "rgba(255,255,255,0.34)";
+      segmentStripCtx.lineWidth = 1;
+      segmentStripCtx.strokeRect(
+        x + 0.5,
+        y + 0.5,
+        stripCellSize - 1,
+        stripCellSize - 1
+      );
+
+      const symbolColor = symbolColorFor(palette);
+      if (code === "d") {
+        const inset = stripCellSize * 0.24;
+        segmentStripCtx.strokeStyle = symbolColor;
+        segmentStripCtx.lineWidth = Math.max(2, stripCellSize * 0.065);
+        segmentStripCtx.lineCap = "round";
+        segmentStripCtx.beginPath();
+        segmentStripCtx.moveTo(x + inset, y + inset);
+        segmentStripCtx.lineTo(
+          x + stripCellSize - inset,
+          y + stripCellSize - inset
+        );
+        segmentStripCtx.moveTo(x + stripCellSize - inset, y + inset);
+        segmentStripCtx.lineTo(x + inset, y + stripCellSize - inset);
+        segmentStripCtx.stroke();
+      } else if (code === "b") {
+        segmentStripCtx.fillStyle = symbolColor;
+        segmentStripCtx.font = `700 ${Math.max(11, stripCellSize * 0.25)}px ui-sans-serif, sans-serif`;
+        segmentStripCtx.textAlign = "center";
+        segmentStripCtx.textBaseline = "middle";
+        segmentStripCtx.fillText(
+          "BS",
+          x + stripCellSize / 2,
+          y + stripCellSize / 2
+        );
+      }
+
+      if (stitch === currentStitch) {
+        segmentStripCtx.strokeStyle = "#FFFFFF";
+        segmentStripCtx.lineWidth = 5;
+        segmentStripCtx.strokeRect(
+          x + 3,
+          y + 3,
+          stripCellSize - 6,
+          stripCellSize - 6
+        );
+        segmentStripCtx.strokeStyle = "#7C3AED";
+        segmentStripCtx.lineWidth = 2.5;
+        segmentStripCtx.strokeRect(
+          x + 8,
+          y + 8,
+          stripCellSize - 16,
+          stripCellSize - 16
+        );
+      }
+
+      segmentStripCtx.fillStyle = "#F8FAFC";
+      segmentStripCtx.font = "600 12px ui-sans-serif, sans-serif";
+      segmentStripCtx.textAlign = "center";
+      segmentStripCtx.textBaseline = "middle";
+      segmentStripCtx.fillText(
+        String(stitch),
+        x + stripCellSize / 2,
+        y + stripCellSize + labelHeight / 2
+      );
+    }
+
+    ui.activeSegmentStripSummary.textContent =
+      `Row ${currentRow} · Stitches ${bounds.start}–${bounds.end}`;
+    ui.activeSegmentDirection.textContent = "Work direction ←";
+
+    const currentVisualIndex = bounds.end - currentStitch;
+    const currentCenter = currentVisualIndex * stripCellSize + stripCellSize / 2;
+    const leftEdge = wrap.scrollLeft;
+    const rightEdge = leftEdge + wrap.clientWidth;
+    if (currentCenter < leftEdge + stripCellSize || currentCenter > rightEdge - stripCellSize) {
+      wrap.scrollTo({
+        left: Math.max(0, currentCenter - wrap.clientWidth / 2),
+        behavior: "smooth"
+      });
+    }
+  }
+
+  function rulerStepForZoom() {
+    if (cellSize >= 40) return 1;
+    if (cellSize >= 20) return 5;
+    if (cellSize >= 10) return 10;
+    return 25;
+  }
+
+  function drawStitchRuler() {
+    if (!chart || !viewport.clientWidth) return;
+
+    const cssWidth = viewport.clientWidth;
+    const cssHeight = 38;
+    prepareAuxiliaryCanvas(
+      stitchRulerCanvas,
+      stitchRulerCtx,
+      cssWidth,
+      cssHeight
+    );
+
+    const viewLeft = viewport.scrollLeft;
+    const firstDisplayX = clamp(
+      Math.floor(viewLeft / cellSize),
+      0,
+      chart.dimensions.stitchesPerRow - 1
+    );
+    const lastDisplayX = clamp(
+      Math.ceil((viewLeft + cssWidth) / cellSize),
+      0,
+      chart.dimensions.stitchesPerRow - 1
+    );
+    const step = rulerStepForZoom();
+    const bounds = segmentBounds(currentSegment);
+    const segmentX = displayXForStitch(bounds.end) * cellSize - viewLeft;
+    const segmentWidth = bounds.count * cellSize;
+
+    stitchRulerCtx.fillStyle = "rgba(124, 58, 237, 0.13)";
+    stitchRulerCtx.fillRect(segmentX, 0, segmentWidth, cssHeight);
+    stitchRulerCtx.strokeStyle = "rgba(148, 163, 184, 0.75)";
+    stitchRulerCtx.lineWidth = 1;
+    stitchRulerCtx.beginPath();
+    stitchRulerCtx.moveTo(0, cssHeight - 1);
+    stitchRulerCtx.lineTo(cssWidth, cssHeight - 1);
+    stitchRulerCtx.stroke();
+
+    for (let displayX = firstDisplayX; displayX <= lastDisplayX; displayX += 1) {
+      const stitch = stitchFromDisplayX(displayX);
+      const showNumber = stitch === 1 || stitch % step === 0;
+      if (!showNumber) continue;
+
+      const x = displayX * cellSize - viewLeft + cellSize / 2;
+      stitchRulerCtx.strokeStyle =
+        stitch === currentStitch ? "#7C3AED" : "rgba(100, 116, 139, 0.9)";
+      stitchRulerCtx.lineWidth = stitch === currentStitch ? 2.5 : 1;
+      stitchRulerCtx.beginPath();
+      stitchRulerCtx.moveTo(x, cssHeight - 11);
+      stitchRulerCtx.lineTo(x, cssHeight - 1);
+      stitchRulerCtx.stroke();
+
+      stitchRulerCtx.fillStyle =
+        stitch === currentStitch ? "#7C3AED" : "#64748B";
+      stitchRulerCtx.font =
+        `${stitch === currentStitch ? "700" : "600"} 11px ui-sans-serif, sans-serif`;
+      stitchRulerCtx.textAlign = "center";
+      stitchRulerCtx.textBaseline = "middle";
+      stitchRulerCtx.fillText(String(stitch), x, 12);
+    }
   }
 
   function resizeViewportCanvas(cssWidth, cssHeight) {
@@ -632,7 +875,7 @@
   }
 
   function updateUndoButtons() {
-    const disabled = undoStack.length === 0;
+    const disabled = undoStack.length === 0 || controlsLocked;
     ui.undoAction.disabled = disabled;
     ui.mobileUndo.disabled = disabled;
     const label = disabled
@@ -784,6 +1027,9 @@
     document.body.classList.toggle("crochet-mode", crochetMode);
     $("toggleCrochetMode").textContent =
       crochetMode ? "Full Controls" : "Crochet Mode";
+    syncRowNoteEditor();
+    updateInteractionLockUi();
+    updateWakeLockStatus();
     updateUndoButtons();
   }
 
@@ -801,7 +1047,9 @@
         showGrid: ui.showGrid.checked,
         showSymbols: ui.showSymbols.checked,
         showFoundation,
-        autoCenter,
+        scrollMode,
+        autoCenter: scrollMode !== "off",
+        keepScreenAwake,
         crochetMode,
         segmentSize
       }
@@ -834,7 +1082,7 @@
     }, SAVE_DELAY);
 
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       projectId: activeProject.id,
       projectName: activeProject.name,
       chartId: chart.chartId,
@@ -895,8 +1143,11 @@
     ui.showSymbols.checked = normalized.view.showSymbols;
     showFoundation = normalized.view.showFoundation;
     ui.showFoundation.checked = showFoundation;
-    autoCenter = normalized.view.autoCenter;
-    ui.autoCenter.checked = autoCenter;
+    scrollMode = normalized.view.scrollMode ||
+      (normalized.view.autoCenter === false ? "off" : "center");
+    ui.scrollMode.value = scrollMode;
+    keepScreenAwake = Boolean(normalized.view.keepScreenAwake);
+    ui.keepScreenAwake.checked = keepScreenAwake;
     crochetMode = normalized.view.crochetMode;
 
     updateStageSize();
@@ -906,7 +1157,7 @@
     if (announce) {
       saveProgress();
       ui.status.textContent = "Progress imported";
-      scrollToCurrentStitch();
+      applyAutomaticChartMovement();
     }
   }
 
@@ -969,7 +1220,7 @@
     queueDraw();
     saveProgress();
 
-    if (autoCenter) scrollToCurrentStitch();
+    applyAutomaticChartMovement();
     ui.status.textContent = `Undid ${action.label}`;
   }
 
@@ -999,7 +1250,9 @@
     queueDraw();
     saveProgress();
 
-    if (scroll || autoCenter) scrollToCurrentStitch();
+    if (scroll) {
+      applyAutomaticChartMovement();
+    }
   }
 
   function moveSegment(delta) {
@@ -1146,21 +1399,97 @@
     updateUi();
     queueDraw();
     saveProgress();
-    scrollToCurrentStitch();
+    applyAutomaticChartMovement();
   }
 
-  function scrollToCurrentStitch(behavior = "smooth") {
-    const rect = currentStitchRectangle();
-    const targetLeft =
-      rect.x - viewport.clientWidth / 2 + rect.width / 2;
-    const targetTop =
-      rect.y - viewport.clientHeight / 2 + rect.height / 2;
+  function scrollToCurrentSegment(behavior = "smooth") {
+    const rect = currentSegmentRectangle();
+    const segmentCenterX = rect.x + rect.width / 2;
+    const segmentCenterY = rect.y + rect.height / 2;
+
+    const maximumLeft = Math.max(
+      0,
+      chart.dimensions.stitchesPerRow * cellSize -
+        viewport.clientWidth
+    );
+    const maximumTop = Math.max(
+      0,
+      displayRowCount() * cellSize -
+        viewport.clientHeight
+    );
+
+    const targetLeft = clamp(
+      segmentCenterX - viewport.clientWidth / 2,
+      0,
+      maximumLeft
+    );
+    const targetTop = clamp(
+      segmentCenterY - viewport.clientHeight / 2,
+      0,
+      maximumTop
+    );
 
     viewport.scrollTo({
-      left: Math.max(0, targetLeft),
-      top: Math.max(0, targetTop),
+      left: targetLeft,
+      top: targetTop,
       behavior
     });
+  }
+
+  function ensureCurrentSegmentVisible(behavior = "smooth") {
+    const rect = currentSegmentRectangle();
+    const margin = Math.min(32, Math.max(12, cellSize * 0.5));
+    const currentLeft = viewport.scrollLeft;
+    const currentTop = viewport.scrollTop;
+    const visibleRight = currentLeft + viewport.clientWidth;
+    const visibleBottom = currentTop + viewport.clientHeight;
+    const maximumLeft = Math.max(
+      0,
+      chart.dimensions.stitchesPerRow * cellSize - viewport.clientWidth
+    );
+    const maximumTop = Math.max(
+      0,
+      displayRowCount() * cellSize - viewport.clientHeight
+    );
+
+    let targetLeft = currentLeft;
+    let targetTop = currentTop;
+
+    if (rect.width + margin * 2 > viewport.clientWidth) {
+      targetLeft = rect.x + rect.width / 2 - viewport.clientWidth / 2;
+    } else if (rect.x < currentLeft + margin) {
+      targetLeft = rect.x - margin;
+    } else if (rect.x + rect.width > visibleRight - margin) {
+      targetLeft = rect.x + rect.width - viewport.clientWidth + margin;
+    }
+
+    if (rect.y < currentTop + margin) {
+      targetTop = rect.y - margin;
+    } else if (rect.y + rect.height > visibleBottom - margin) {
+      targetTop = rect.y + rect.height - viewport.clientHeight + margin;
+    }
+
+    targetLeft = clamp(targetLeft, 0, maximumLeft);
+    targetTop = clamp(targetTop, 0, maximumTop);
+
+    if (
+      Math.abs(targetLeft - currentLeft) > 1 ||
+      Math.abs(targetTop - currentTop) > 1
+    ) {
+      viewport.scrollTo({
+        left: targetLeft,
+        top: targetTop,
+        behavior
+      });
+    }
+  }
+
+  function applyAutomaticChartMovement(behavior = "smooth") {
+    if (scrollMode === "center") {
+      scrollToCurrentSegment(behavior);
+    } else if (scrollMode === "visible") {
+      ensureCurrentSegmentVisible(behavior);
+    }
   }
 
   function changeZoom(nextSize, centerCurrent = true) {
@@ -1176,7 +1505,7 @@
     queueDraw();
 
     requestAnimationFrame(() => {
-      if (centerCurrent) scrollToCurrentStitch("auto");
+      if (centerCurrent) applyAutomaticChartMovement("auto");
       saveProgress();
     });
   }
@@ -1193,7 +1522,8 @@
     const byWidth = availableWidth / (segmentSize + 1);
     const byHeight = availableHeight / 3.25;
 
-    changeZoom(Math.min(byWidth, byHeight, MAX_CELL_SIZE));
+    changeZoom(Math.min(byWidth, byHeight, MAX_CELL_SIZE), false);
+    requestAnimationFrame(() => scrollToCurrentSegment("auto"));
   }
 
   function fitWholeChart() {
@@ -1359,6 +1689,232 @@
     ui.status.textContent = "Yarn colors saved";
   }
 
+  function loadProjectDetails() {
+    const details = activeProject.details || {};
+    ui.yarnBrand.value = details.yarnBrand || "";
+    ui.hookSize.value = details.hookSize || "";
+    ui.gauge.value = details.gauge || "";
+    ui.projectStartDate.value = details.startDate || "";
+    ui.projectNotes.value = activeProject.notes || "";
+    rowNoteEditorRow = 0;
+    syncRowNoteEditor();
+  }
+
+  async function saveProjectRecord(statusMessage = "Project details saved") {
+    clearTimeout(notesSaveTimer);
+    activeProject.chart = chart;
+    activeProject.progress = progressSnapshot();
+    activeProject.updatedAt = new Date().toISOString();
+    activeProject = await ProjectStore.put(activeProject);
+    ui.status.textContent = statusMessage;
+    return activeProject;
+  }
+
+  function scheduleProjectRecordSave(
+    statusMessage = "Notes saved",
+    statusRow = rowNoteEditorRow
+  ) {
+    clearTimeout(notesSaveTimer);
+    notesSaveTimer = setTimeout(() => {
+      saveProjectRecord(statusMessage)
+        .then(() => {
+          if (ui.rowNote && rowNoteEditorRow === statusRow) {
+            ui.rowNoteStatus.textContent = ui.rowNote.value.trim()
+              ? `Saved for row ${statusRow}.`
+              : `No note is saved for row ${statusRow}.`;
+          }
+        })
+        .catch((error) => {
+          console.warn("Could not save project notes.", error);
+          ui.status.textContent = "Notes could not be saved";
+          ui.rowNoteStatus.textContent = "The row note could not be saved.";
+        });
+    }, 650);
+  }
+
+  function saveRowNoteValue(rowNumber, value) {
+    if (!activeProject.rowNotes || typeof activeProject.rowNotes !== "object") {
+      activeProject.rowNotes = {};
+    }
+
+    const note = String(value || "").trim();
+    if (note) activeProject.rowNotes[String(rowNumber)] = note;
+    else delete activeProject.rowNotes[String(rowNumber)];
+  }
+
+  function syncRowNoteEditor() {
+    if (!activeProject || !ui.rowNote) return;
+
+    if (rowNoteEditorRow !== currentRow) {
+      rowNoteEditorRow = currentRow;
+      ui.rowNoteNumber.textContent = String(currentRow);
+      ui.rowNote.value = activeProject.rowNotes?.[String(currentRow)] || "";
+      ui.rowNoteStatus.textContent = ui.rowNote.value
+        ? "A note is saved for this row."
+        : "No note is saved for this row.";
+    }
+  }
+
+  async function saveProjectDetails() {
+    activeProject.details = {
+      yarnBrand: ui.yarnBrand.value,
+      hookSize: ui.hookSize.value,
+      gauge: ui.gauge.value,
+      startDate: ui.projectStartDate.value
+    };
+    activeProject.notes = ui.projectNotes.value;
+    await saveProjectRecord("Project details saved");
+    await ProjectStore.flushAutoBackup();
+  }
+
+  async function saveCurrentRowNote() {
+    saveRowNoteValue(currentRow, ui.rowNote.value);
+    await saveProjectRecord(`Row ${currentRow} note saved`);
+    ui.rowNoteStatus.textContent = ui.rowNote.value.trim()
+      ? `Saved for row ${currentRow}.`
+      : `No note is saved for row ${currentRow}.`;
+  }
+
+  async function clearCurrentRowNote() {
+    ui.rowNote.value = "";
+    saveRowNoteValue(currentRow, "");
+    await saveProjectRecord(`Row ${currentRow} note cleared`);
+    ui.rowNoteStatus.textContent = `No note is saved for row ${currentRow}.`;
+  }
+
+  function wakeLockSupported() {
+    return "wakeLock" in navigator && typeof navigator.wakeLock?.request === "function";
+  }
+
+  function updateWakeLockStatus() {
+    if (!wakeLockSupported()) {
+      ui.keepScreenAwake.disabled = true;
+      ui.wakeLockStatus.textContent =
+        "This browser does not support keeping the screen awake.";
+      return;
+    }
+
+    ui.keepScreenAwake.disabled = false;
+    if (!keepScreenAwake) {
+      ui.wakeLockStatus.textContent = "The screen may sleep normally.";
+    } else if (wakeLockSentinel) {
+      ui.wakeLockStatus.textContent = "Screen awake is active while this page is visible.";
+    } else if (document.visibilityState !== "visible") {
+      ui.wakeLockStatus.textContent = "Screen awake will resume when the viewer is visible.";
+    } else {
+      ui.wakeLockStatus.textContent = "Screen awake is enabled and waiting to reconnect.";
+    }
+  }
+
+  async function requestScreenWakeLock() {
+    if (
+      !keepScreenAwake ||
+      !wakeLockSupported() ||
+      wakeLockSentinel ||
+      document.visibilityState !== "visible"
+    ) {
+      updateWakeLockStatus();
+      return;
+    }
+
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request("screen");
+      wakeLockSentinel.addEventListener("release", () => {
+        wakeLockSentinel = null;
+        updateWakeLockStatus();
+      }, { once: true });
+      updateWakeLockStatus();
+    } catch (error) {
+      console.warn("Screen wake lock could not be enabled.", error);
+      wakeLockSentinel = null;
+      ui.wakeLockStatus.textContent =
+        `Screen awake could not start: ${error.message}`;
+    }
+  }
+
+  async function releaseScreenWakeLock() {
+    const sentinel = wakeLockSentinel;
+    wakeLockSentinel = null;
+    if (sentinel) {
+      try {
+        await sentinel.release();
+      } catch (error) {
+        console.warn("Screen wake lock could not be released cleanly.", error);
+      }
+    }
+    updateWakeLockStatus();
+  }
+
+  async function applyWakeLockPreference() {
+    if (keepScreenAwake) await requestScreenWakeLock();
+    else await releaseScreenWakeLock();
+    saveProgress();
+  }
+
+  const lockSensitiveControlIds = [
+    "segmentSizeInput",
+    "applySegmentSize",
+    "toggleSegment",
+    "completeNext",
+    "toggleStitch",
+    "completeStitchNext",
+    "completeRow",
+    "clearRow",
+    "resetProgress",
+    "importProgress",
+    "saveYarnColors",
+    "saveProjectDetails",
+    "saveRowNote",
+    "clearRowNote"
+  ];
+
+  function updateInteractionLockUi() {
+    document.body.classList.toggle("interaction-locked", controlsLocked);
+    const label = controlsLocked ? "Unlock Controls" : "Lock Controls";
+    const shortLabel = controlsLocked ? "Unlock" : "Lock";
+
+    ui.topInteractionLock.textContent = label;
+    ui.sidebarInteractionLock.textContent =
+      controlsLocked ? "Unlock accidental-tap protection" : "Lock accidental taps";
+    ui.mobileInteractionLock.textContent = shortLabel;
+
+    for (const button of [
+      ui.topInteractionLock,
+      ui.sidebarInteractionLock,
+      ui.mobileInteractionLock
+    ]) {
+      button.setAttribute("aria-pressed", String(controlsLocked));
+    }
+
+    for (const id of lockSensitiveControlIds) {
+      const control = $(id);
+      if (control) control.disabled = controlsLocked;
+    }
+
+    canvas.setAttribute(
+      "aria-description",
+      controlsLocked
+        ? "Chart selection is locked. Scrolling remains available."
+        : "Tap a chart cell to select its exact stitch."
+    );
+  }
+
+  function toggleInteractionLock() {
+    if (
+      controlsLocked &&
+      !confirm("Unlock chart selection and editing controls?")
+    ) {
+      return;
+    }
+
+    controlsLocked = !controlsLocked;
+    updateInteractionLockUi();
+    updateUndoButtons();
+    ui.status.textContent = controlsLocked
+      ? "Accidental-tap protection is on. Scrolling and Complete & Next remain available."
+      : "Controls unlocked";
+  }
+
   function exportProgress() {
     const payload = saveProgress();
     const blob = new Blob(
@@ -1435,6 +1991,8 @@
   }
 
   async function backupLibraryNow() {
+    saveRowNoteValue(rowNoteEditorRow || currentRow, ui.rowNote.value);
+    await saveProjectRecord("Project saved");
     const status = currentBackupStatus;
 
     if (!status?.supported) {
@@ -1484,20 +2042,22 @@
 
     if (crochetMode) {
       requestAnimationFrame(() => {
-        scrollToCurrentStitch("auto");
+        scrollToCurrentSegment("auto");
       });
     }
   }
 
   function bindEvents() {
     $("changeProject").addEventListener("click", async () => {
-      await flushProgress();
+      saveRowNoteValue(rowNoteEditorRow || currentRow, ui.rowNote.value);
+      await saveProjectRecord("Project saved");
       await ProjectStore.flushAutoBackup();
       window.location.href = "index.html";
     });
 
     $("newProject").addEventListener("click", async () => {
-      await flushProgress();
+      saveRowNoteValue(rowNoteEditorRow || currentRow, ui.rowNote.value);
+      await saveProjectRecord("Project saved");
       await ProjectStore.flushAutoBackup();
       window.location.href = "index.html?new=1";
     });
@@ -1508,6 +2068,19 @@
     );
     ui.undoAction.addEventListener("click", undoLastAction);
     ui.mobileUndo.addEventListener("click", undoLastAction);
+    ui.topInteractionLock.addEventListener("click", toggleInteractionLock);
+    ui.sidebarInteractionLock.addEventListener("click", toggleInteractionLock);
+    ui.mobileInteractionLock.addEventListener("click", toggleInteractionLock);
+
+    $("exportProject").addEventListener("click", async () => {
+      try {
+        saveRowNoteValue(rowNoteEditorRow || currentRow, ui.rowNote.value);
+        await saveProjectRecord("Project saved");
+        await ProjectStore.downloadProject(activeProject.id);
+      } catch (error) {
+        alert(`Could not export this project: ${error.message}`);
+      }
+    });
 
     $("backupNow").addEventListener("click", () => {
       backupLibraryNow().catch((error) => {
@@ -1613,7 +2186,7 @@
     );
     $("scrollCurrent").addEventListener(
       "click",
-      () => scrollToCurrentStitch()
+      () => scrollToCurrentSegment()
     );
     $("fitSegment").addEventListener(
       "click",
@@ -1636,6 +2209,32 @@
         });
       }
     );
+    $("saveProjectDetails").addEventListener("click", () => {
+      saveProjectDetails().catch((error) => {
+        console.error(error);
+        alert(`Could not save project details: ${error.message}`);
+      });
+    });
+    $("saveRowNote").addEventListener("click", () => {
+      saveCurrentRowNote().catch((error) => {
+        console.error(error);
+        alert(`Could not save the row note: ${error.message}`);
+      });
+    });
+    $("clearRowNote").addEventListener("click", () => {
+      clearCurrentRowNote().catch((error) => {
+        console.error(error);
+        alert(`Could not clear the row note: ${error.message}`);
+      });
+    });
+    ui.rowNote.addEventListener("input", () => {
+      saveRowNoteValue(currentRow, ui.rowNote.value);
+      ui.rowNoteStatus.textContent = "Saving…";
+      scheduleProjectRecordSave(
+        `Row ${currentRow} note saved`,
+        currentRow
+      );
+    });
 
     $("zoomOut").addEventListener(
       "click",
@@ -1694,10 +2293,16 @@
       queueDraw();
       saveProgress();
     });
-    ui.autoCenter.addEventListener("change", () => {
-      autoCenter = ui.autoCenter.checked;
+    ui.scrollMode.addEventListener("change", () => {
+      scrollMode = ui.scrollMode.value;
       saveProgress();
-      if (autoCenter) scrollToCurrentStitch();
+      applyAutomaticChartMovement();
+    });
+    ui.keepScreenAwake.addEventListener("change", () => {
+      keepScreenAwake = ui.keepScreenAwake.checked;
+      applyWakeLockPreference().catch((error) => {
+        console.warn("Could not update screen-awake mode.", error);
+      });
     });
 
     viewport.addEventListener(
@@ -1720,10 +2325,17 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         flushProgress().catch(() => {});
+      } else if (keepScreenAwake) {
+        requestScreenWakeLock().catch(() => {});
       }
     });
 
     window.addEventListener("pagehide", () => {
+      clearTimeout(notesSaveTimer);
+      if (rowNoteEditorRow >= 1) {
+        saveRowNoteValue(rowNoteEditorRow, ui.rowNote.value);
+      }
+      releaseScreenWakeLock().catch(() => {});
       if (chart && activeProject) {
         ProjectStore.saveRecoveryProgress(
           activeProject.id,
@@ -1742,6 +2354,10 @@
     );
 
     canvas.addEventListener("click", (event) => {
+      if (controlsLocked) {
+        ui.status.textContent = "Chart selection is locked. Use Unlock Controls to change the selected stitch.";
+        return;
+      }
       const cell = eventCell(event);
       if (!cell || cell.row === 0) return;
 
@@ -1767,7 +2383,7 @@
         event.key.toLowerCase() === "z"
       ) {
         event.preventDefault();
-        undoLastAction();
+        if (!controlsLocked) undoLastAction();
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
         moveStitch(-1);
@@ -1782,7 +2398,7 @@
         moveRow(-1);
       } else if (event.key === " ") {
         event.preventDefault();
-        toggleCurrentStitch();
+        if (!controlsLocked) toggleCurrentStitch();
       } else if (event.key === "Enter") {
         event.preventDefault();
         completeStitchAndNext();
@@ -1818,13 +2434,17 @@
       buildLegend();
       buildYarnColorEditor();
       restoreProgress();
+      loadProjectDetails();
       bindEvents();
       updateStageSize();
       updateUi();
       queueDraw();
+      if (keepScreenAwake) {
+        requestScreenWakeLock().catch(() => {});
+      }
 
       setTimeout(() => {
-        scrollToCurrentStitch("auto");
+        applyAutomaticChartMovement("auto");
       }, 120);
     } catch (error) {
       console.error(error);

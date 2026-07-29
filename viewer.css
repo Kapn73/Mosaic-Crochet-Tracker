@@ -850,3 +850,237 @@ body.crochet-mode .focus-label {
     max-width: none;
   }
 }
+
+/* Crochet Usability release */
+select,
+textarea,
+input[type="text"],
+input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 9px;
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.4;
+}
+
+select:focus-visible,
+textarea:focus-visible,
+input[type="text"]:focus-visible,
+input[type="date"]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.select-label,
+.textarea-label,
+.notes-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.select-label {
+  margin-top: 11px;
+}
+
+.textarea-label {
+  margin-top: 10px;
+}
+
+.notes-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.project-details-panel textarea,
+.row-notes-panel textarea {
+  margin: 6px 0 10px;
+}
+
+.chart-section {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.active-segment-strip {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  padding: 8px 12px 10px;
+}
+
+.active-segment-strip-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.active-segment-strip-heading > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.active-segment-strip-heading strong {
+  color: var(--text);
+}
+
+.active-segment-canvas-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #111827;
+  -webkit-overflow-scrolling: touch;
+}
+
+#segmentStripCanvas {
+  display: block;
+  max-width: none;
+  touch-action: pan-x;
+}
+
+.stitch-ruler {
+  position: relative;
+  min-height: 60px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-soft);
+}
+
+.work-direction-label {
+  padding: 5px 12px 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+#stitchRulerCanvas {
+  display: block;
+  width: 100%;
+  height: 38px;
+}
+
+body.interaction-locked #chartCanvas {
+  cursor: grab;
+}
+
+body.interaction-locked .chart-toolbar {
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--current) 72%, transparent);
+}
+
+body.interaction-locked .focus-label::before {
+  content: "Locked · ";
+}
+
+button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--current) 72%, var(--border));
+  background: color-mix(in srgb, var(--current) 18%, var(--panel));
+}
+
+@media (max-width: 840px) {
+  .active-segment-strip {
+    position: sticky;
+    top: 54px;
+    z-index: 4;
+    padding: 7px 8px 8px;
+  }
+
+  .stitch-ruler {
+    position: sticky;
+    top: 170px;
+    z-index: 3;
+  }
+
+  .active-segment-strip-heading {
+    margin-bottom: 5px;
+  }
+
+  .mobile-crochet-dock {
+    grid-template-columns: 46px 54px 54px minmax(0, 1fr) minmax(118px, auto) 46px;
+  }
+
+  body.crochet-mode .chart-section {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+
+  body.crochet-mode .chart-toolbar {
+    display: none;
+  }
+
+  body.crochet-mode .active-segment-strip {
+    top: 0;
+  }
+
+  body.crochet-mode .stitch-ruler {
+    top: 115px;
+  }
+}
+
+@media (max-width: 570px) {
+  .notes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .active-segment-strip-heading {
+    align-items: flex-start;
+    font-size: 0.75rem;
+  }
+
+  .work-direction-label {
+    font-size: 0.7rem;
+  }
+
+  .mobile-crochet-dock {
+    grid-template-columns: 40px 48px 48px minmax(0, 1fr) 104px 40px;
+    gap: 4px;
+  }
+
+  .mobile-crochet-dock button {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+}
+
+@media (max-width: 410px) {
+  .mobile-crochet-dock {
+    grid-template-columns: 38px 44px 44px minmax(0, 1fr) 92px 38px;
+  }
+
+  #mobileInteractionLock,
+  #mobileUndo {
+    font-size: 0.68rem;
+  }
+}
+
+/* The chart viewport scrolls internally, so the strip and ruler remain visible
+   without sticky offsets that could overlap on short mobile screens. */
+@media (max-width: 840px) {
+  .active-segment-strip,
+  .stitch-ruler,
+  body.crochet-mode .active-segment-strip,
+  body.crochet-mode .stitch-ruler {
+    position: relative;
+    top: auto;
+  }
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

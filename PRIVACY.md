@@ -12,6 +12,8 @@ The app stores the following in the visitor's browser:
 - Current row, segment, and stitch
 - Display preferences
 - Archive status
+- Yarn, hook, gauge, and start-date details
+- General project notes and notes for individual rows
 - Backup connection information supported by the browser
 
 Selected Stitch Fiddle PDFs are parsed in browser memory. The original PDF is
@@ -52,3 +54,15 @@ Regular backups are recommended.
 The service worker caches public application files for offline use. It does
 not cache imported pattern PDFs, personal backup files, or browser database
 contents.
+
+## Screen Wake Lock
+
+When the visitor enables **Keep screen awake while crocheting**, the viewer asks
+the browser to keep the display awake while the page is visible. This request
+does not upload chart or project data. The wake lock is released when the page
+closes or becomes unavailable.
+
+## Accidental-tap protection
+
+The control lock is local interface state. It does not create an account, send
+data, or add information to backups.

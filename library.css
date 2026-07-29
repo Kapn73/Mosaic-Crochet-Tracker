@@ -545,3 +545,63 @@ input[type="search"]:focus-visible {
     max-width: none;
   }
 }
+
+/* Selective project restore */
+.restore-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.restore-selection-toolbar > span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.restore-selection-toolbar > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.restore-project-item.selectable {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  cursor: pointer;
+}
+
+.restore-project-item.selectable input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.restore-project-copy {
+  display: grid;
+  gap: 3px;
+}
+
+@media (max-width: 520px) {
+  .restore-selection-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .restore-selection-toolbar > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.restore-project-copy > strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.restore-project-copy > span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}

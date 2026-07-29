@@ -1,17 +1,17 @@
-const CACHE_NAME = "mosaic-crochet-viewer-v4";
+const CACHE_NAME = "mosaic-crochet-viewer-v6";
 
 const APP_SHELL = [
   "./",
   "./index.html",
   "./viewer.html",
-  "./library.css?v=4",
-  "./library.js?v=4",
-  "./viewer.css?v=4",
-  "./viewer.js?v=4",
-  "./project-store.js?v=4",
-  "./stitch-fiddle-pdf.js?v=4",
-  "./pwa.js?v=4",
-  "./vendor/pako_inflate.min.js?v=4",
+  "./library.css?v=6",
+  "./library.js?v=6",
+  "./viewer.css?v=6",
+  "./viewer.js?v=6",
+  "./project-store.js?v=6",
+  "./stitch-fiddle-pdf.js?v=6",
+  "./pwa.js?v=6",
+  "./vendor/pako_inflate.min.js?v=6",
   "./demo-geometric-bloom.json",
   "./manifest.webmanifest",
   "./icons/icon-192.png",

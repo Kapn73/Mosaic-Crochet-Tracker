@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>Mosaic Crochet Projects</title>
-  <link rel="stylesheet" href="library.css?v=4">
+  <link rel="stylesheet" href="library.css?v=6">
 </head>
 <body>
   <main class="library-shell">
@@ -38,7 +38,7 @@
         <button id="downloadBackup" type="button">Download Backup</button>
 
         <label class="file-button">
-          Restore Backup
+          Restore or Import Project
           <input id="restoreBackup" type="file" accept="application/json,.json">
         </label>
 
@@ -76,7 +76,7 @@
     </section>
 
     <footer class="library-footer">
-      <p>Each project keeps its own chart, name, segment size, current row and segment, zoom, and completed stitches.</p>
+      <p>Each project keeps its own chart, name, notes, segment size, exact current stitch, zoom, display settings, and completed stitches.</p>
       <p id="storageInfo"></p>
     </footer>
   </main>
@@ -144,17 +144,25 @@
     <section class="dialog-card restore-card">
       <header class="dialog-header">
         <div>
-          <h2 id="restoreTitle">Restore Library Backup</h2>
-          <p id="restoreSummary">Review the projects in this backup.</p>
+          <h2 id="restoreTitle">Restore or Import Projects</h2>
+          <p id="restoreSummary">Review and select the projects in this file.</p>
         </div>
         <button id="closeRestoreDialog" class="icon-button" type="button" aria-label="Close">×</button>
       </header>
 
+      <div class="restore-selection-toolbar">
+        <span id="restoreSelectedCount">0 projects selected</span>
+        <div>
+          <button id="selectAllRestore" type="button">Select All</button>
+          <button id="clearRestoreSelection" type="button">Clear Selection</button>
+        </div>
+      </div>
+
       <div id="restoreProjectList" class="restore-project-list"></div>
 
       <div class="restore-warning">
-        <strong>Merge</strong> keeps current projects and imports the backup with new IDs when needed.
-        <strong>Replace</strong> saves a recovery copy, then replaces the current library.
+        Choose the projects to restore. <strong>Merge</strong> keeps current projects and imports the selected items with new IDs when needed.
+        <strong>Replace</strong> saves a recovery copy, then replaces the current library with only the selected projects.
       </div>
 
       <div class="dialog-actions restore-actions">
@@ -581,10 +589,10 @@
     }
   ]
 }</script>
-  <script src="vendor/pako_inflate.min.js?v=4"></script>
-  <script src="stitch-fiddle-pdf.js?v=4"></script>
-  <script src="project-store.js?v=4"></script>
-  <script src="library.js?v=4"></script>
-  <script src="pwa.js?v=4"></script>
+  <script src="vendor/pako_inflate.min.js?v=6"></script>
+  <script src="stitch-fiddle-pdf.js?v=6"></script>
+  <script src="project-store.js?v=6"></script>
+  <script src="library.js?v=6"></script>
+  <script src="pwa.js?v=6"></script>
 </body>
 </html>

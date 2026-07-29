@@ -1,24 +1,28 @@
 MOSAIC CROCHET PROJECT VIEWER
-STABILITY & MOBILE RELEASE VALIDATION
+CROCHET USABILITY RELEASE — VALIDATION
 
-- JavaScript syntax: passed (7 files)
-- Automated release test: passed
-- HTML control references and embedded demo JSON: passed
-- PWA manifest and app icons: passed
-- Offline application shell: passed
+- JavaScript syntax: passed (8 files)
+- Release/data/storage tests: passed
+- Viewer initialization smoke test: passed
+- Default PDF regression: passed (267×200 exact; 251×150 visual/stitch equivalence)
+- Public demo JSON and PWA manifest parsing: passed
+- HTML IDs, script references, and embedded chart data: passed
+- CSS parsing: passed
+- Six requested crochet-usability feature groups: present
+- Offline PWA cache v6 and app icons: passed
 - Private pattern files and identifiers: absent
-- Default PDF regression: passed (267×200 exact; 251×150 visual equivalence)
 
-Release highlights:
-- Direct PDF and JSON import
-- Strict public-file validation
-- Import preview, flip, color swap, and diagnostics
-- Exact-stitch tracking and 20-action undo
-- iPhone Crochet Mode and sticky controls
-- Compact progress records and emergency recovery journal
-- Merge/replace restore with recovery
-- Editable yarn colors
-- Offline PWA support
-- Automated GitHub Actions validation
+Included usability upgrades:
+- Center segment, keep segment visible, or no automatic chart movement
+- Enlarged working-segment strip
+- Stitch-number ruler and work-direction guide
+- Project details, general notes, and row-specific notes
+- Individual-project export and selective restore
+- Screen Wake Lock option and accidental-tap protection
 
-The public package contains no private pattern PDFs or converted private charts.
+Compatibility and safety:
+- Existing browser database name and stores are retained.
+- Older auto-center settings migrate to the new scroll-mode setting.
+- Notes and details are optional, so existing projects remain compatible.
+- Full-library and individual backups include notes and current progress.
+- No private pattern PDF or converted private chart is included.

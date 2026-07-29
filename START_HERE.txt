@@ -1,12 +1,18 @@
-MOSAIC CROCHET PROJECT VIEWER — STABILITY & MOBILE RELEASE
+MOSAIC CROCHET PROJECT VIEWER — CROCHET USABILITY RELEASE
 
 For users:
 1. Open index.html through a hosted HTTPS site such as GitHub Pages.
-2. Select New Project.
-3. Import a supported Stitch Fiddle PDF or compatible JSON.
-4. Confirm the preview, then create the project.
-5. On iPhone, select Crochet Mode and add the site to the Home Screen.
-6. Download regular full-library backups.
+2. Select New Project and import a supported Stitch Fiddle PDF or compatible JSON.
+3. Confirm the preview, then create and load the project.
+4. Choose an automatic chart-movement mode:
+   - Center working segment
+   - Keep working segment visible
+   - Do not move automatically
+5. Use the enlarged segment strip and stitch-number ruler while crocheting.
+6. Add optional project details or notes for individual rows.
+7. On iPhone, select Crochet Mode and add the site to the Home Screen.
+8. Use Keep Screen Awake when supported and Lock accidental taps when helpful.
+9. Download regular full-library backups or export an individual project.
 
 For GitHub Pages:
 Upload every file and folder in this package to the repository root.
